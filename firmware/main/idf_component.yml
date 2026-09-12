@@ -1,5 +1,11 @@
 ## IDF Component Manager Manifest File
 dependencies:
+  # Preserve factory versions when resolving the added recognition component.
+  78/uart-uhci: "==0.2.1"
+  espressif/esp_sccb_intf: "==0.0.8"
+  espressif/i2c_bus: "==1.5.1"
+  espressif/iot_usbh_cdc: "==3.0.0"
+  espressif/hand_gesture_recognition: "==0.2.0"
   waveshare/esp_lcd_sh8601: 1.0.2
   espressif/esp_lcd_co5300: ^2.0.3
   espressif/esp_lcd_ili9341: ==1.2.0
@@ -30,7 +36,7 @@ dependencies:
     - if: target not in [esp32]
   78/xiaozhi-fonts: ~1.6.0
   espressif/led_strip: ~3.0.2
-  espressif/esp_codec_dev: ~1.5.4
+  espressif/esp_codec_dev: ==1.5.4
   espressif/esp-sr: ~2.3.0
   espressif/button: ~4.1.5
   espressif/knob: ^1.0.0

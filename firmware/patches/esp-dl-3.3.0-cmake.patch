@@ -1,0 +1,14 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -142 +142,9 @@
+-component_compile_options(-ffast-math -O3 -Wno-error=format=-Wno-format)
++component_compile_options(-ffast-math -Wno-error=format=-Wno-format)
++
++# ESP-DL's quantized kernels depend on the optimization configuration used by
++# the upstream component. Keep those kernels and their module wrappers at -O3,
++# while allowing the rest of this large factory application to retain -Os.
++file(GLOB_RECURSE numeric_core_srcs CONFIGURE_DEPENDS
++     "${CMAKE_CURRENT_LIST_DIR}/dl/base/*.cpp"
++     "${CMAKE_CURRENT_LIST_DIR}/dl/module/*.cpp")
++set_source_files_properties(${numeric_core_srcs} PROPERTIES COMPILE_OPTIONS -O3)

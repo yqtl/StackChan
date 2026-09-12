@@ -1004,3 +1004,10 @@ menu "BLE prph Configuration"
             Use this option to enable resolving peer's address.
 
 endmenu
+
+config STACKCHAN_CUSTOM_FIRMWARE
+    bool "Preserve custom firmware during automatic update checks"
+    default y
+    help
+        Continue activation and connection setup, but do not automatically
+        replace this custom build with a server-provided stock image.

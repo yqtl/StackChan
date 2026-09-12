@@ -7,3 +7,6 @@ ota_0,    app,  ota_0,   0x20000,   0x4f0000,
 ota_1,    app,  ota_1,   ,          0x4f0000,
 assets,   data, spiffs,  0xA00000,  4M,
 coredump, data, coredump,,          0x10000,
+# Gesture models occupy previously unused space; factory partitions stay in place.
+hand_det, data, 0x40, 0xE10000, 0x80000,
+hand_gesture_cls, data, 0x40, 0xE90000, 0xD0000,

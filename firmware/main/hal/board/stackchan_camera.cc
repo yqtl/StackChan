@@ -851,7 +851,7 @@ bool StackChanCamera::Capture()
     return true;
 }
 
-bool StackChanCamera::StreamCaptures()
+bool StackChanCamera::StreamCaptures(bool fresh)
 {
     if (encoder_thread_.joinable()) {
         encoder_thread_.join();
@@ -859,6 +859,22 @@ bool StackChanCamera::StreamCaptures()
 
     if (!streaming_on_ || video_fd_ < 0) {
         return false;
+    }
+
+    if (fresh) {
+        // Inference can take longer than a sensor frame. The queued buffer
+        // otherwise contains the scene from the START of the previous run.
+        // Return each queued buffer without copying, then wait for a new frame.
+        for (size_t i = 0; i < mmap_buffers_.size(); ++i) {
+            struct v4l2_buffer stale = {};
+            stale.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+            stale.memory = V4L2_MEMORY_MMAP;
+            if (ioctl(video_fd_, VIDIOC_DQBUF, &stale) != 0 ||
+                ioctl(video_fd_, VIDIOC_QBUF, &stale) != 0) {
+                ESP_LOGE(TAG, "Failed to discard stale camera frame");
+                return false;
+            }
+        }
     }
 
     {
@@ -870,27 +886,28 @@ bool StackChanCamera::StreamCaptures()
             return false;
         }
         {
-            // 保存帧副本到PSRAM
-            if (frame_.data) {
-                heap_caps_free(frame_.data);
-                frame_.data   = nullptr;
-                frame_.format = 0;
-            }
-            frame_.len  = buf.bytesused;
-            frame_.data = (uint8_t*)heap_caps_malloc(frame_.len, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-            if (!frame_.data) {
-                ESP_LOGE(TAG, "alloc frame copy failed: need allocate %lu bytes", buf.bytesused);
-                if (ioctl(video_fd_, VIDIOC_QBUF, &buf) != 0) {
-                    ESP_LOGE(TAG, "Cleanup: VIDIOC_QBUF failed");
+            // Reuse the frame copy during streaming; QVGA frames have a fixed
+            // size. Avoid freeing and allocating PSRAM on every inference.
+            if (!frame_.data || frame_.len < buf.bytesused) {
+                auto *data = static_cast<uint8_t *>(heap_caps_realloc(
+                    frame_.data, buf.bytesused, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+                if (!data) {
+                    ESP_LOGE(TAG, "alloc frame copy failed: need allocate %lu bytes", buf.bytesused);
+                    if (ioctl(video_fd_, VIDIOC_QBUF, &buf) != 0) {
+                        ESP_LOGE(TAG, "Cleanup: VIDIOC_QBUF failed");
+                    }
+                    return false;
                 }
-                return false;
+                frame_.data = data;
             }
+            frame_.len = buf.bytesused;
+            frame_.format = 0;
 
 #ifdef CONFIG_XIAOZHI_ENABLE_ROTATE_CAMERA_IMAGE
-            ESP_LOGW(TAG, "mmap_buffers_[buf.index].length = %d, sensor_width = %d, sensor_height = %d",
+            ESP_LOGD(TAG, "mmap_buffers_[buf.index].length = %d, sensor_width = %d, sensor_height = %d",
                      mmap_buffers_[buf.index].length, sensor_width_, sensor_height_);
 #else
-            ESP_LOGW(TAG, "mmap_buffers_[buf.index].length = %d, frame.width = %d, frame.height = %d",
+            ESP_LOGD(TAG, "mmap_buffers_[buf.index].length = %d, frame.width = %d, frame.height = %d",
                      mmap_buffers_[buf.index].length, frame_.width, frame_.height);
 #endif  // CONFIG_XIAOZHI_ENABLE_ROTATE_CAMERA_IMAGE
             ESP_LOG_BUFFER_HEXDUMP(TAG, mmap_buffers_[buf.index].start, MIN(mmap_buffers_[buf.index].length, 256),
@@ -961,6 +978,7 @@ bool StackChanCamera::StreamCaptures()
 
         if (ioctl(video_fd_, VIDIOC_QBUF, &buf) != 0) {
             ESP_LOGE(TAG, "VIDIOC_QBUF failed");
+            return false;
         }
     }
 

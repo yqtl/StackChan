@@ -24,13 +24,12 @@ private:
     void report(const char *message, bool confirmed = false);
     void stopWorker();
     std::atomic<bool> _stop{false};
-    std::atomic<unsigned> _preview_revision{0};
     QueueHandle_t _results = nullptr;
     SemaphoreHandle_t _done = nullptr;
     uint8_t *_preview_pixels = nullptr;
     lv_image_dsc_t _preview_image{};
     lv_obj_t *_preview = nullptr;
+    lv_obj_t *_hand_box = nullptr;
     lv_obj_t *_status = nullptr;
-    unsigned _displayed_preview_revision = 0;
     bool _worker_started = false;
 };

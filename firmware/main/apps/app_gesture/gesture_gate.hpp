@@ -4,16 +4,19 @@
 // Only confirmed, single-hand observations may advance the hold timer.
 class GestureGate {
 public:
-    static constexpr int64_t hold_ms = 1000;
+    static constexpr int64_t hold_ms = 250;
+    static constexpr unsigned minimum_observations = 2;
     static constexpr int64_t release_ms = 1000;
-    // Detector + classifier takes about 830 ms on StackChan. Allow normal
-    // frame jitter while still resetting the hold after a stalled worker.
+    // Also tolerate the previous single-core cadence (~830 ms), but never
+    // count a stalled worker as evidence that a pose was held or removed.
     static constexpr int64_t maximum_gap_ms = 1200;
 
     bool update(int64_t now, bool thumbs_up, bool no_hand) {
         if (last_ >= 0 && (now < last_ || now - last_ > maximum_gap_ms)) {
             hold_start_ = release_start_ = -1;
+            observations_ = 0;
         }
+        if (now == last_) return false; // Repeated timestamps are not fresh frames.
         last_ = now;
         if (latched_) {
             if (!no_hand) {
@@ -29,12 +32,15 @@ public:
         }
         if (!thumbs_up) {
             hold_start_ = -1;
+            observations_ = 0;
             return false;
         }
         if (hold_start_ < 0) hold_start_ = now;
-        if (now - hold_start_ < hold_ms) return false;
+        if (observations_ < minimum_observations) ++observations_;
+        if (observations_ < minimum_observations || now - hold_start_ < hold_ms) return false;
         latched_ = true;
         hold_start_ = -1;
+        observations_ = 0;
         return true;
     }
 
@@ -44,5 +50,6 @@ private:
     int64_t last_ = -1;
     int64_t hold_start_ = -1;
     int64_t release_start_ = -1;
+    unsigned observations_ = 0;
     bool latched_ = false;
 };

@@ -1,12 +1,11 @@
 #include "app_gesture.h"
 #include "gesture_gate.hpp"
-#include <apps/common/common.h>
+#include "gesture_models.hpp"
+#include <apps/common/home_indicator/home_indicator.h>
+#include <apps/common/status_bar/status_bar.h>
 #include <assets/assets.h>
 #include <hal/hal.h>
 #include <hal/board/hal_bridge.h>
-#include <stackchan/stackchan.h>
-#include <hand_detect.hpp>
-#include <hand_gesture_recognition.hpp>
 #include <esp_heap_caps.h>
 #include <esp_imgfx_color_convert.h>
 #include <esp_log.h>
@@ -20,9 +19,7 @@
 #include <memory>
 #include <new>
 
-using namespace stackchan;
 static constexpr const char *TAG = "Gesture";
-static constexpr float MINIMUM_HAND_SCORE = hand_detect::ESPDet::default_score_thr;
 static constexpr float MINIMUM_SCORE = 0.85f;
 
 AppGesture::AppGesture()
@@ -56,6 +53,19 @@ void AppGesture::onOpen()
             lv_image_set_src(_preview, &_preview_image);
             lv_obj_center(_preview);
 
+            // Keep detection graphics separate from the camera pixels. A new
+            // preview frame must not erase the box while inference is running.
+            _hand_box = lv_obj_create(_preview);
+            lv_obj_remove_style_all(_hand_box);
+            lv_obj_set_style_bg_opa(_hand_box, LV_OPA_TRANSP, 0);
+            lv_obj_set_style_border_color(_hand_box, lv_color_hex(0x00FF00), 0);
+            lv_obj_set_style_border_opa(_hand_box, LV_OPA_COVER, 0);
+            lv_obj_set_style_border_width(_hand_box, 2, 0);
+            lv_obj_set_style_radius(_hand_box, 0, 0);
+            lv_obj_remove_flag(_hand_box, LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_remove_flag(_hand_box, LV_OBJ_FLAG_SCROLLABLE);
+            lv_obj_add_flag(_hand_box, LV_OBJ_FLAG_HIDDEN);
+
             _status = lv_label_create(lv_screen_active());
             lv_obj_set_width(_status, 304);
             lv_obj_align(_status, LV_ALIGN_BOTTOM_MID, 0, -20);
@@ -75,7 +85,7 @@ void AppGesture::onOpen()
     if (!_results || !_done) {
         stopWorker();
         LvglLockGuard lock;
-        GetStackChan().avatar().setSpeech("Not enough memory");
+        if (_status) lv_label_set_text(_status, "Not enough memory");
         return;
     }
     _worker_started = xTaskCreatePinnedToCore(worker, "gesture", 16384, this,
@@ -102,11 +112,6 @@ void AppGesture::onRunning()
                                       result.confirmed ? lv_color_hex(0x146B3A) : lv_color_black(), 0);
         }
     }
-    const unsigned revision = _preview_revision.load();
-    if (_preview && revision != _displayed_preview_revision) {
-        _displayed_preview_revision = revision;
-        lv_obj_invalidate(_preview);
-    }
     view::update_home_indicator();
     view::update_status_bar();
 }
@@ -130,6 +135,7 @@ void AppGesture::onClose()
         LvglLockGuard lock;
         if (_status) { lv_obj_delete(_status); _status = nullptr; }
         if (_preview) { lv_obj_delete(_preview); _preview = nullptr; }
+        _hand_box = nullptr; // Deleted with its preview parent.
         view::destroy_home_indicator();
         view::destroy_status_bar();
     }
@@ -179,9 +185,11 @@ void AppGesture::recognize()
         32, 320 * 240 * 3, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
     if (!resources.rgb) { report("Not enough camera memory"); return; }
 
-    HandDetect detector;
-    detector.set_score_thr(MINIMUM_HAND_SCORE);
-    HandGestureRecognizer recognizer(HandGestureCls::MOBILENETV2_0_5_S8_V1);
+    // Load both models before accepting gestures, so the first hand does not
+    // pay the classifier's lazy-loading cost.
+    GestureDetector detector;
+    GestureClassifier classifier;
+    report("Show one thumbs-up");
     dl::image::img_t image{};
     image.data = resources.rgb;
     image.width = 320;
@@ -189,11 +197,11 @@ void AppGesture::recognize()
     image.pix_type = dl::image::DL_IMAGE_PIX_TYPE_RGB888;
     GestureGate gate;
     unsigned count = 0;
-    unsigned frames = 0;
+    int64_t next_timing_log = 0;
     int camera_format = 0;
     while (!_stop.load()) {
         const int64_t frame_started = esp_timer_get_time();
-        if (!camera->StreamCaptures()) { report("Camera capture failed"); return; }
+        if (!camera->StreamCaptures(true)) { report("Camera capture failed"); return; }
         if (_stop.load()) return;
         if (camera->GetFrameWidth() != 320 || camera->GetFrameHeight() != 240 ||
             !camera->GetFrameData()) {
@@ -216,6 +224,7 @@ void AppGesture::recognize()
             report("Camera format changed");
             return;
         }
+        const int64_t captured = esp_timer_get_time();
         esp_imgfx_data_t input{const_cast<uint8_t *>(camera->GetFrameData()),
                                static_cast<uint32_t>(camera->GetFrameSize())};
         esp_imgfx_data_t output{resources.rgb, 320 * 240 * 3};
@@ -223,56 +232,63 @@ void AppGesture::recognize()
             report("Image conversion failed");
             return;
         }
-        for (size_t pixel = 0; pixel < 320 * 240; ++pixel) {
-            const uint8_t red = resources.rgb[pixel * 3];
-            const uint8_t green = resources.rgb[pixel * 3 + 1];
-            const uint8_t blue = resources.rgb[pixel * 3 + 2];
-            const uint16_t rgb565 = static_cast<uint16_t>(((red & 0xF8) << 8) |
-                                                          ((green & 0xFC) << 3) | (blue >> 3));
-            _preview_pixels[pixel * 2] = static_cast<uint8_t>(rgb565);
-            _preview_pixels[pixel * 2 + 1] = static_cast<uint8_t>(rgb565 >> 8);
+        {
+            // LVGL must not read pixels while the worker writes them. Publish the
+            // new camera image now, before either model blocks this worker.
+            LvglLockGuard lock;
+            for (size_t pixel = 0; pixel < 320 * 240; ++pixel) {
+                const uint8_t red = resources.rgb[pixel * 3];
+                const uint8_t green = resources.rgb[pixel * 3 + 1];
+                const uint8_t blue = resources.rgb[pixel * 3 + 2];
+                const uint16_t rgb565 = static_cast<uint16_t>(((red & 0xF8) << 8) |
+                                                              ((green & 0xFC) << 3) | (blue >> 3));
+                _preview_pixels[pixel * 2] = static_cast<uint8_t>(rgb565);
+                _preview_pixels[pixel * 2 + 1] = static_cast<uint8_t>(rgb565 >> 8);
+            }
+            lv_obj_invalidate(_preview);
         }
+        const int64_t preview_ready = esp_timer_get_time();
         // Use the same converted image for preview and recognition.
         const auto &inference_image = image;
         auto &hands = detector.run(inference_image);
-        if (frames++ % 30 == 0) {
-            ESP_LOGI(TAG, "Camera RGB: %u hands, best %.4f", static_cast<unsigned>(hands.size()),
-                     hands.empty() ? 0.0f : hands.front().score);
-        }
-        if (!hands.empty() && hands.front().box.size() >= 4) {
-            const auto &box = hands.front().box;
-            const int left = std::max(0, std::min(319, box[0]));
-            const int top = std::max(0, std::min(239, box[1]));
-            const int right = std::max(0, std::min(319, box[2]));
-            const int bottom = std::max(0, std::min(239, box[3]));
-            for (int x = left; x <= right; ++x) {
-                for (int y : {top, std::min(top + 1, 239), std::max(bottom - 1, 0), bottom}) {
-                    _preview_pixels[(y * 320 + x) * 2] = 0xE0;
-                    _preview_pixels[(y * 320 + x) * 2 + 1] = 0x07;
+        const int64_t detected = esp_timer_get_time();
+        if (_stop.load()) return;
+        {
+            LvglLockGuard lock;
+            bool visible = false;
+            if (!hands.empty() && hands.front().box.size() >= 4) {
+                const auto &box = hands.front().box;
+                const int left = std::clamp(box[0], 0, 319);
+                const int top = std::clamp(box[1], 0, 239);
+                const int right = std::clamp(box[2], 0, 319);
+                const int bottom = std::clamp(box[3], 0, 239);
+                if (right > left && bottom > top) {
+                    lv_obj_set_pos(_hand_box, left, top);
+                    lv_obj_set_size(_hand_box, right - left + 1, bottom - top + 1);
+                    visible = true;
                 }
             }
-            for (int y = top; y <= bottom; ++y) {
-                for (int x : {left, std::min(left + 1, 319), std::max(right - 1, 0), right}) {
-                    _preview_pixels[(y * 320 + x) * 2] = 0xE0;
-                    _preview_pixels[(y * 320 + x) * 2 + 1] = 0x07;
-                }
-            }
+            if (visible) lv_obj_remove_flag(_hand_box, LV_OBJ_FLAG_HIDDEN);
+            else lv_obj_add_flag(_hand_box, LV_OBJ_FLAG_HIDDEN);
         }
-        _preview_revision.fetch_add(1);
         bool thumbs_up = false;
         const char *gesture = "none";
         float score = 0.0f;
-        if (hands.size() == 1) {
-            const auto results = recognizer.recognize(inference_image, hands);
+        const int64_t classification_started = esp_timer_get_time();
+        // While latched, only the detector is needed to observe hand removal.
+        const bool classify = hands.size() == 1 && hands.front().box.size() >= 4 && !gate.latched();
+        if (classify) {
+            const auto &box = hands.front().box;
+            const auto results = classifier.run_crop(inference_image, {box[0], box[1], box[2], box[3]});
             if (results.size() == 1) {
                 const auto &r = results.front();
                 gesture = r.cat_name ? r.cat_name : "unknown";
                 score = std::isfinite(r.score) ? r.score : 0.0f;
                 thumbs_up = r.cat_name && std::strcmp(r.cat_name, "like") == 0 &&
                             std::isfinite(r.score) && r.score >= MINIMUM_SCORE;
-                ESP_LOGI(TAG, "%s: %.2f", r.cat_name ? r.cat_name : "unknown", r.score);
             }
         }
+        const int64_t classified = esp_timer_get_time();
         if (_stop.load()) return;
         if (gate.update(esp_timer_get_time() / 1000, thumbs_up, hands.empty())) {
             ESP_LOGI(TAG, "THUMBS_UP_CONFIRMED %u", ++count);
@@ -294,6 +310,19 @@ void AppGesture::recognize()
             }
             report(status);
         }
-        vTaskDelay(pdMS_TO_TICKS(30));
+        const int64_t finished = esp_timer_get_time();
+        if (finished >= next_timing_log) {
+            ESP_LOGI(TAG, "Timing ms: capture=%ld preview=%ld detect=%ld classify=%ld total=%ld "
+                          "hands=%u cls=%d heap=%u",
+                     static_cast<long>((captured - frame_started) / 1000),
+                     static_cast<long>((preview_ready - captured) / 1000),
+                     static_cast<long>((detected - preview_ready) / 1000),
+                     static_cast<long>((classified - classification_started) / 1000),
+                     static_cast<long>((finished - frame_started) / 1000),
+                     static_cast<unsigned>(hands.size()), classify,
+                     static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)));
+            next_timing_log = finished + 5000000;
+        }
+        vTaskDelay(1); // Yield to the UI/watchdog without a fixed 30 ms pause.
     }
 }

@@ -50,7 +50,8 @@ public:
 
     virtual void SetExplainUrl(const std::string& url, const std::string& token);
     virtual bool Capture() override;
-    bool StreamCaptures();
+    // Discard queued frames when freshness matters more than capture latency.
+    bool StreamCaptures(bool fresh = false);
 
     // 翻转控制函数
     virtual bool SetHMirror(bool enabled) override;

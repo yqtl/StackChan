@@ -318,6 +318,11 @@ idf_component_register(SRCS ${SOURCES}
                         smooth_ui_toolkit
                     )
 
+# This must follow idf_component_register: IDF's requirements scan executes
+# everything before registration in CMake script mode.
+# Optimize Gesture pixel conversion while keeping the factory app at -Os.
+set_source_files_properties(apps/app_gesture/app_gesture.cpp PROPERTIES COMPILE_OPTIONS -O3)
+
 # Use target_compile_definitions to define BOARD_TYPE, BOARD_NAME
 # If BOARD_NAME is empty, use BOARD_TYPE
 if(NOT BOARD_NAME)

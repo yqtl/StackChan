@@ -16,7 +16,7 @@ commented integration point after gesture confirmation.
 
 The factory application partitions remain unchanged:
 
-- `ota_0`: custom `1.5.1-gesture.4` application at `0x20000`
+- `ota_0`: custom `1.5.1-gesture.5` application at `0x20000`
 - `ota_1`: original factory 1.5.1 application at `0x510000`
 - `hand_det`: local hand detector model at `0xe10000`
 - `hand_gesture_cls`: local gesture classifier model at `0xe90000`
@@ -39,11 +39,14 @@ cd firmware
 The helper fetches the pinned nested repositories, resolves managed
 dependencies, applies both checked-in patches idempotently, and builds the
 firmware. ESP-DL's quantized kernels and module wrappers retain upstream
-`-O3`; surrounding code uses the project's `-Os`. This build tests whether the
-all-`-Os` configuration caused the saturated false detections, while still
-fitting the original OTA slot.
+`-O3`; surrounding code uses the project's `-Os`. The helper also checks the
+link map to ensure hand convolution routines come from ESP-DL.
 
-The application image is 4,918,720 bytes. It leaves 258,624 bytes free in the
+ESP-SR is pinned to 2.4.5 to fix its ESP32-S3 kernel symbol collision with
+ESP-DL. This requires ESP-DSP 1.8.0 and ESP-DL 3.3.2; other existing dependency
+versions are retained in `dependencies.lock`.
+
+The application image is 5,036,256 bytes. It leaves 141,088 bytes free in the
 5,177,344-byte application slot.
 
 ## Validation status
@@ -53,8 +56,25 @@ The application image is 4,918,720 bytes. It leaves 258,624 bytes free in the
 - The application image checksum and validation hash pass.
 - Host gesture-gate tests pass with warnings as errors and undefined-behavior
   checks enabled.
-- `1.5.1-gesture.4` was written to `ota_0` and esptool verified the flash hash.
-- Empty-scene and thumbs-up behavior on `.4` still require hardware testing.
+- The link-map guard rejects `.4` and passes `.5`: all 12 hand convolution
+  entry points resolve to ESP-DL.
+- The first `.5` hardware test reports no hand in an empty scene at about
+  405 ms per frame. The earlier saturated detections are resolved.
+- Hardware logs show sustained thumbs-up (`like`) at 100% confidence, with
+  classified frames 830 ms apart. RGB and native YUYV gave the same 73.1%
+  detector confidence on a paired frame. Recognition uses preview RGB.
+- The old 750 ms stale-observation timeout reset the hold on every classified
+  frame. It is now 1200 ms; regression tests reproduce the original failure
+  and verify confirmation, rearming, and stall rejection at hardware cadence.
+- The detector uses Espressif's 25% default. Confirmation still requires 85%
+  classifier confidence and at least a one-second hold (about 1.7 seconds
+  from the first positive frame at the measured cadence).
+- The timing fix was flashed to `ota_0` and its hash verified. Both host CTest
+  tests pass, and the gesture gate also passes with UBSan and warnings as errors.
+  Hardware testing passed: the user confirmed thumbs-up after a three-second
+  hold, clearing after lowering the hand, successful repeated confirmations,
+  and no thumbs-up confirmation for other tested gestures. Earlier partial-box
+  and second-candidate reports were not addressed by crop changes.
 
 ## Continue development
 
@@ -62,15 +82,19 @@ Start by opening `GESTURE` on the flashed StackChan and observing an empty
 scene. Record the hand count, best confidence, inference time, and whether a
 green box appears. Then show one thumbs-up and record its label and confidence.
 
-Versions `.2` and `.3` consistently returned ten hands at 100% confidence on
-empty scenes, with about 425 ms per frame. Raising the detector threshold to
-60% and passing the camera's native YUYV data directly did not change that
-result, so further threshold tuning is unlikely to help. Version `.4` restores
-upstream optimization for the quantized core while retaining a size-optimized
-build elsewhere. If `.4` still produces ten saturated detections, the next
-diagnostic should run the detector on a synthetic uniform image and report raw
-pre-postprocessor tensor ranges. That will separate camera input problems from
-model execution or postprocessing problems.
+Versions `.2` through `.4` returned ten hands at 100% confidence on empty
+scenes, with about 429 ms per frame. Threshold, input-format, and compiler
+optimization changes did not fix it. The `.4` link map shows ESP-DL calling
+`dl_tie728_s8_conv2d_*` routines from ESP-SR's legacy `libdl_lib.a`.
+ESP-SR 2.4.5 gives its routines distinct `dl_tie728_sr_*` names, resolving
+the collision. See the [upstream fix](https://github.com/espressif/esp-sr/commit/5fadfbd5bd9df756f543973bd43520d9270ffb1b).
+
+The temporary raw tensor dumps and double-inference comparison pass have
+been removed. The build guard can also be run directly:
+
+```bash
+rtk proxy python3 firmware/tests/check_gesture_link_map.py firmware/build/stack-chan.map
+```
 
 After local thumbs-up recognition is reliable, enqueue the network action at
 the `THUMBS_UP_CONFIRMED` point in `app_gesture.cpp`. The intended final action

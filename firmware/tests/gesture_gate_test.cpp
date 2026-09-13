@@ -37,5 +37,29 @@ int main() {
     assert(!stale.update(5000, false, true)); // Gap cannot count as hand removal.
     assert(stale.latched());
 
-    std::cout << "PASS: hold, repeated gestures, rearming, dropouts and stale observations\n";
+    // Hardware produces one classified frame every ~830 ms. These are fresh
+    // observations and must be able to complete the one-second hold.
+    GestureGate hardware;
+    assert(!hardware.update(0, true, false));
+    assert(!hardware.update(830, true, false));
+    assert(hardware.update(1660, true, false));
+    assert(!hardware.update(2490, true, false));
+    assert(!hardware.update(2905, false, true));
+    assert(!hardware.update(3320, false, true));
+    assert(!hardware.update(3735, false, true));
+    assert(hardware.latched());
+    assert(!hardware.update(4150, false, true));
+    assert(!hardware.latched());
+    assert(!hardware.update(4980, true, false));
+    assert(!hardware.update(5810, true, false));
+    assert(hardware.update(6640, true, false));
+
+    GestureGate stalled;
+    assert(!stalled.update(0, true, false));
+    const auto resumed = GestureGate::maximum_gap_ms + 1;
+    assert(!stalled.update(resumed, true, false));
+    assert(!stalled.update(resumed + 830, true, false));
+    assert(stalled.update(resumed + 1660, true, false));
+
+    std::cout << "PASS: hold, rearming, dropouts, stale observations and 830 ms frames\n";
 }

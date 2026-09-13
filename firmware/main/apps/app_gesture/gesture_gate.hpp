@@ -6,7 +6,9 @@ class GestureGate {
 public:
     static constexpr int64_t hold_ms = 1000;
     static constexpr int64_t release_ms = 1000;
-    static constexpr int64_t maximum_gap_ms = 750;
+    // Detector + classifier takes about 830 ms on StackChan. Allow normal
+    // frame jitter while still resetting the hold after a stalled worker.
+    static constexpr int64_t maximum_gap_ms = 1200;
 
     bool update(int64_t now, bool thumbs_up, bool no_hand) {
         if (last_ >= 0 && (now < last_ || now - last_ > maximum_gap_ms)) {

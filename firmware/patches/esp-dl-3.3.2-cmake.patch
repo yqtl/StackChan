@@ -1,7 +1,7 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -142 +142,9 @@
+@@ -143 +143,9 @@
 -component_compile_options(-ffast-math -O3 -Wno-error=format=-Wno-format)
 +component_compile_options(-ffast-math -Wno-error=format=-Wno-format)
 +

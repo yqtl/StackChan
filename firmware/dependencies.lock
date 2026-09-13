@@ -141,6 +141,16 @@ dependencies:
       registry_url: https://components.espressif.com/
       type: service
     version: 4.1.6
+  espressif/cjson:
+    component_hash: e788323270d90738662d66fffa910bfe1fba019bba087f01557e70c40485b469
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=5.0'
+    source:
+      registry_url: https://components.espressif.com
+      type: service
+    version: 1.7.19~2
   espressif/cmake_utilities:
     component_hash: 351350613ceafba240b761b4ea991e0f231ac7a9f59a9ee901f751bddc0bb18f
     dependencies:
@@ -162,7 +172,7 @@ dependencies:
       type: service
     version: 0.7.0
   espressif/esp-dl:
-    component_hash: 3988acc4c6114459c9134b65d9088195c14d43a80193fe2ca2785c1fe0390f36
+    component_hash: 6622c0dc7e3d7a647b60371c6e5e339918526e1da48000ebd594bb2a3b6ef6d5
     dependencies:
     - name: espressif/dl_fft
       registry_url: https://components.espressif.com
@@ -171,7 +181,7 @@ dependencies:
     - name: espressif/esp-dsp
       registry_url: https://components.espressif.com
       require: private
-      version: ==1.7.0
+      version: ==1.8.0
     - name: espressif/esp_new_jpeg
       registry_url: https://components.espressif.com
       require: private
@@ -191,9 +201,9 @@ dependencies:
     - esp32p4
     - esp32s2
     - esp32s3
-    version: 3.3.0
+    version: 3.3.2
   espressif/esp-dsp:
-    component_hash: 42dce32d46ac93dc11f60d368e29a830e9661c7345d794b8a45c343479cae636
+    component_hash: 12e44db246517a627bc0fe2b255b8335410c0215c98bfba2df5a8e3edea839ef
     dependencies:
     - name: idf
       require: private
@@ -201,25 +211,29 @@ dependencies:
     source:
       registry_url: https://components.espressif.com
       type: service
-    version: 1.7.0
+    version: 1.8.0
   espressif/esp-sr:
-    component_hash: 46b1f70f8b561714b958d1c455213cca07162755d1b8df53498081199f15136f
+    component_hash: 70f252161c06dbf4e901025f83f119cbe53b6d94f19dd8018f5cd0d23df68ffa
     dependencies:
+    - name: idf
+      require: private
+      version: '>=5.0'
+    - name: espressif/esp-dsp
+      registry_url: https://components.espressif.com
+      require: private
+      version: 1.8.0
+    - name: espressif/cjson
+      registry_url: https://components.espressif.com
+      require: private
+      version: ^1.7.19
     - name: espressif/dl_fft
       registry_url: https://components.espressif.com
       require: private
       version: '>=0.2.0'
-    - name: espressif/esp-dsp
-      registry_url: https://components.espressif.com
-      require: private
-      version: 1.7.0
-    - name: idf
-      require: private
-      version: '>=5.0'
     source:
       registry_url: https://components.espressif.com/
       type: service
-    version: 2.3.1
+    version: 2.4.5
   espressif/esp32-camera:
     component_hash: ac4228c825b891378bc0806869170d4ebc5d45ba8ebc519b4f8886a56ad2d123
     dependencies:
@@ -968,6 +982,6 @@ direct_dependencies:
 - waveshare/esp_lcd_sh8601
 - waveshare/esp_lcd_touch_cst9217
 - wvirgil123/sscma_client
-manifest_hash: 97003fe5448c12762f4ad02b82a6789e4d7bc8b1a3fec3bcf36cbd6f2addb179
+manifest_hash: 376d3f915238fba651ff5f2911603346cc42b7a79c89bd483ac57944fc8c91cb
 target: esp32s3
 version: 2.0.0

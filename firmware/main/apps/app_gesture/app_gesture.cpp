@@ -22,7 +22,7 @@
 
 using namespace stackchan;
 static constexpr const char *TAG = "Gesture";
-static constexpr float MINIMUM_HAND_SCORE = 0.60f;
+static constexpr float MINIMUM_HAND_SCORE = hand_detect::ESPDet::default_score_thr;
 static constexpr float MINIMUM_SCORE = 0.85f;
 
 AppGesture::AppGesture()
@@ -189,6 +189,7 @@ void AppGesture::recognize()
     image.pix_type = dl::image::DL_IMAGE_PIX_TYPE_RGB888;
     GestureGate gate;
     unsigned count = 0;
+    unsigned frames = 0;
     int camera_format = 0;
     while (!_stop.load()) {
         const int64_t frame_started = esp_timer_get_time();
@@ -231,12 +232,13 @@ void AppGesture::recognize()
             _preview_pixels[pixel * 2] = static_cast<uint8_t>(rgb565);
             _preview_pixels[pixel * 2 + 1] = static_cast<uint8_t>(rgb565 >> 8);
         }
-        dl::image::img_t inference_image = image;
-        if (camera_format == ESP_IMGFX_PIXEL_FMT_YUYV) {
-            inference_image.data = const_cast<uint8_t *>(camera->GetFrameData());
-            inference_image.pix_type = dl::image::DL_IMAGE_PIX_TYPE_YUYV;
-        }
+        // Use the same converted image for preview and recognition.
+        const auto &inference_image = image;
         auto &hands = detector.run(inference_image);
+        if (frames++ % 30 == 0) {
+            ESP_LOGI(TAG, "Camera RGB: %u hands, best %.4f", static_cast<unsigned>(hands.size()),
+                     hands.empty() ? 0.0f : hands.front().score);
+        }
         if (!hands.empty() && hands.front().box.size() >= 4) {
             const auto &box = hands.front().box;
             const int left = std::max(0, std::min(319, box[0]));

@@ -13,3 +13,4 @@
 #include "app_ezdata/app_ezdata.h"
 #include "app_dance/app_dance.h"
 #include "app_gesture/app_gesture.h"
+#include "app_sl_bus/app_sl_bus.h"

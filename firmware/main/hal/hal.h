@@ -275,6 +275,8 @@ public:
 
     /* --------------------------------- Network -------------------------------- */
     void startNetwork(std::function<void(std::string_view)> onLog);
+    bool startNetworkCancellable(std::function<bool()> isCancelled,
+                                 std::function<void(std::string_view)> onLog);
     WifiStatus getWifiStatus();
     void startSntp();
 

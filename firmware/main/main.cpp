@@ -31,7 +31,9 @@ extern "C" void app_main(void)
 
     if (!skip_mooncake) {
         // Install apps
-        GetMooncake().installApp(std::make_unique<AppLauncher>());
+        auto launcher = std::make_unique<AppLauncher>();
+        auto *launcher_ptr = launcher.get();
+        const int launcher_id = GetMooncake().installApp(std::move(launcher));
         GetMooncake().installApp(std::make_unique<AppAiAgent>());
         GetMooncake().installApp(std::make_unique<AppAvatar>());
         GetMooncake().installApp(std::make_unique<AppEspnowControl>());
@@ -39,8 +41,19 @@ extern "C" void app_main(void)
         GetMooncake().installApp(std::make_unique<AppEzdata>());
         GetMooncake().installApp(std::make_unique<AppDance>());
         GetMooncake().installApp(std::make_unique<AppSetup>());
-        GetMooncake().installApp(std::make_unique<AppGesture>());
-        GetMooncake().installApp(std::make_unique<AppSlBus>());
+        auto gesture = std::make_unique<AppGesture>();
+        auto *gesture_ptr = gesture.get();
+        const int gesture_id = GetMooncake().installApp(std::move(gesture));
+        auto sl_bus = std::make_unique<AppSlBus>();
+        auto *sl_bus_ptr = sl_bus.get();
+        const int sl_bus_id = GetMooncake().installApp(std::move(sl_bus));
+
+        if (launcher_ptr && gesture_ptr && sl_bus_ptr && launcher_id >= 0 && gesture_id >= 0 && sl_bus_id >= 0) {
+            gesture_ptr->onThumbsUpConfirmed =
+                [launcher_ptr, gesture_id, sl_bus_id]() {
+                    return launcher_ptr->requestAppAfterClose(gesture_id, sl_bus_id);
+                };
+        }
 
         // Main loop
         while (1) {

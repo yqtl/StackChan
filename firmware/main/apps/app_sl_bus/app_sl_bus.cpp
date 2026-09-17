@@ -8,6 +8,8 @@
 #include <apps/common/home_indicator/home_indicator.h>
 #include <apps/common/status_bar/status_bar.h>
 #include <assets/assets.h>
+#include <esp_heap_caps.h>
+#include <esp_log.h>
 #include <esp_timer.h>
 #include <freertos/task.h>
 #include <hal/hal.h>
@@ -18,9 +20,19 @@
 
 namespace {
 
+constexpr const char *TAG = "SL.BUS";
+
 uint64_t monotonic_ms()
 {
     return static_cast<uint64_t>(esp_timer_get_time() / 1000);
+}
+
+void log_heap_boundary(const char *event)
+{
+    ESP_LOGI(TAG, "%s t=%llu heap=%u largest=%u", event,
+             static_cast<unsigned long long>(esp_timer_get_time() / 1000),
+             static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
+             static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)));
 }
 
 }  // namespace
@@ -77,6 +89,7 @@ void AppSlBus::onOpen()
             _store.publish_failure(stop_index, "Cannot start bus updater");
         }
     }
+    log_heap_boundary("SL.BUS open/network start");
 }
 
 void AppSlBus::onRunning()

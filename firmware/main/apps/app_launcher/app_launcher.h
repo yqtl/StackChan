@@ -4,14 +4,15 @@
  * SPDX-License-Identifier: MIT
  */
 #pragma once
+#include "deferred_app_launcher.hpp"
+
 #include "view/view.h"
 #include <apps/app_setup/workers/workers.h>
 #include <mooncake.h>
-#include <mooncake_templates.h>
 #include <cstdint>
 #include <memory>
 
-class AppLauncher : public mooncake::templates::AppLauncherBase {
+class AppLauncher : public DeferredAppLauncher {
 public:
     void onLauncherCreate() override;
     void onLauncherOpen() override;

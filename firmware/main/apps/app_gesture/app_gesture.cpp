@@ -21,6 +21,19 @@
 
 static constexpr const char *TAG = "Gesture";
 static constexpr float MINIMUM_SCORE = 0.85f;
+static constexpr int64_t DRAIN_WARNING_US = 5000000;
+
+namespace {
+
+void log_heap_boundary(const char *event)
+{
+    ESP_LOGI(TAG, "%s t=%llu heap=%u largest=%u", event,
+             static_cast<unsigned long long>(esp_timer_get_time() / 1000),
+             static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
+             static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)));
+}
+
+}  // namespace
 
 AppGesture::AppGesture()
 {
@@ -36,6 +49,13 @@ AppGesture::~AppGesture() { stopWorker(); }
 
 void AppGesture::onOpen()
 {
+    // onClose() has already joined any previous worker before a new session
+    // can be opened.  Do not reset these values while an old worker exists.
+    _thumbs_up_pending.store(false);
+    _transition.reset();
+    _drain_started_us = 0;
+    _drain_warning_logged = false;
+
     _preview_pixels = static_cast<uint8_t *>(heap_caps_aligned_alloc(
         16, 320 * 240 * 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
     {
@@ -75,10 +95,13 @@ void AppGesture::onOpen()
             lv_obj_set_style_pad_all(_status, 5, 0);
             lv_label_set_text(_status, "Loading local gesture models...");
         }
-        view::create_home_indicator([this]() { close(); }, 0xFFFFFF, 0x184A3A);
+        view::create_home_indicator([this]() { onHomeRequested(); }, 0xFFFFFF, 0x184A3A);
         view::create_status_bar(0xFFFFFF, 0x184A3A);
     }
-    if (!_preview_pixels) return;
+    if (!_preview_pixels) {
+        log_heap_boundary("open without preview");
+        return;
+    }
     _stop = false;
     _results = xQueueCreate(1, sizeof(Result));
     _done = xSemaphoreCreateBinary();
@@ -86,15 +109,22 @@ void AppGesture::onOpen()
         stopWorker();
         LvglLockGuard lock;
         if (_status) lv_label_set_text(_status, "Not enough memory");
+        log_heap_boundary("open worker resources failed");
         return;
     }
     _worker_started = xTaskCreatePinnedToCore(worker, "gesture", 16384, this,
                                               2, nullptr, 0) == pdPASS;
-    if (!_worker_started) report("Cannot start gesture detection");
+    if (!_worker_started) {
+        report("Cannot start gesture detection");
+        log_heap_boundary("open worker start failed");
+    } else {
+        log_heap_boundary("open worker started");
+    }
 }
 
 void AppGesture::report(const char *message, bool confirmed)
 {
+    if (!_results) return;
     Result result{};
     std::snprintf(result.message, sizeof(result.message), "%s", message);
     result.confirmed = confirmed;
@@ -103,17 +133,96 @@ void AppGesture::report(const char *message, bool confirmed)
 
 void AppGesture::onRunning()
 {
-    LvglLockGuard lock;
-    Result result{};
-    if (_results && xQueueReceive(_results, &result, 0) == pdTRUE) {
-        if (_status) {
+    // Home processing can invoke the callback synchronously.  It only changes
+    // the UI-owned transition state and the stop flag, so it is safe here and
+    // must happen before consuming a same-tick confirmation.
+    {
+        LvglLockGuard lock;
+        view::update_home_indicator();
+    }
+
+    const bool pending = _thumbs_up_pending.exchange(false);
+    auto action = _transition.consumeConfirmation(pending, static_cast<bool>(onThumbsUpConfirmed));
+    if (action == GestureTransition::Action::StopForSl) {
+        _stop.store(true);
+        _drain_started_us = esp_timer_get_time();
+        _drain_warning_logged = false;
+        log_heap_boundary("thumbs-up consumed; draining for SL.BUS");
+    }
+
+    const bool worker_done = pollWorkerCompletion();
+    if (worker_done) {
+        if (_transition.isDraining()) log_heap_boundary("gesture drain complete");
+        const auto completion_action = _transition.workerCompleted();
+        if (completion_action != GestureTransition::Action::None) action = completion_action;
+    }
+
+    if (_transition.isDraining() && _drain_started_us > 0 && !_drain_warning_logged &&
+        esp_timer_get_time() - _drain_started_us > DRAIN_WARNING_US) {
+        ESP_LOGE(TAG, "gesture drain exceeded 5 seconds; hardware validation FAILED until investigated");
+        _drain_warning_logged = true;
+    }
+
+    {
+        LvglLockGuard lock;
+        Result result{};
+        if (_results && xQueueReceive(_results, &result, 0) == pdTRUE && _status) {
             lv_label_set_text(_status, result.message);
             lv_obj_set_style_bg_color(_status,
                                       result.confirmed ? lv_color_hex(0x146B3A) : lv_color_black(), 0);
         }
+        if (_status) {
+            switch (_transition.state()) {
+                case GestureTransition::State::StoppingForSl:
+                    lv_label_set_text(_status, "Opening SL.BUS...");
+                    lv_obj_set_style_bg_color(_status, lv_color_hex(0x146B3A), 0);
+                    break;
+                case GestureTransition::State::StoppingForHome:
+                    lv_label_set_text(_status, "Returning to Launcher...");
+                    lv_obj_set_style_bg_color(_status, lv_color_black(), 0);
+                    break;
+                default:
+                    break;
+            }
+        }
+        view::update_status_bar();
     }
-    view::update_home_indicator();
-    view::update_status_bar();
+
+    if (action == GestureTransition::Action::DispatchSl) {
+        // The callback only queues a launcher transition.  It must run outside
+        // the LVGL lock and before this app requests its own close.
+        const bool accepted = onThumbsUpConfirmed && onThumbsUpConfirmed();
+        if (!accepted) {
+            ESP_LOGW(TAG, "Launcher rejected SL.BUS transition; returning to Launcher");
+        } else {
+            ESP_LOGI(TAG, "Launcher accepted SL.BUS transition");
+        }
+        close();
+    } else if (action == GestureTransition::Action::Close) {
+        close();
+    }
+}
+
+void AppGesture::onHomeRequested()
+{
+    const auto action = _transition.requestHome();
+    if (action != GestureTransition::Action::StopForHome) return;
+
+    _thumbs_up_pending.store(false);
+    _stop.store(true);
+    _drain_started_us = esp_timer_get_time();
+    _drain_warning_logged = false;
+    log_heap_boundary("Home requested; draining gesture");
+}
+
+bool AppGesture::pollWorkerCompletion()
+{
+    if (!_worker_started) return true;
+    if (!_done || xSemaphoreTake(_done, 0) != pdTRUE) return false;
+
+    // The semaphore has been consumed, so stopWorker() must not take it again.
+    _worker_started = false;
+    return true;
 }
 
 void AppGesture::stopWorker()
@@ -121,7 +230,9 @@ void AppGesture::stopWorker()
     _stop = true;
     if (_worker_started) {
         // Finish capture/inference before another app can reuse the shared camera.
-        while (xSemaphoreTake(_done, pdMS_TO_TICKS(50)) != pdTRUE) GetHAL().feedTheDog();
+        if (_done) {
+            while (xSemaphoreTake(_done, pdMS_TO_TICKS(50)) != pdTRUE) GetHAL().feedTheDog();
+        }
         _worker_started = false;
     }
     if (_done) { vSemaphoreDelete(_done); _done = nullptr; }
@@ -131,6 +242,8 @@ void AppGesture::stopWorker()
 void AppGesture::onClose()
 {
     stopWorker();
+    _thumbs_up_pending.store(false);
+    _transition.reset();
     {
         LvglLockGuard lock;
         if (_status) { lv_obj_delete(_status); _status = nullptr; }
@@ -141,6 +254,7 @@ void AppGesture::onClose()
     }
     heap_caps_free(_preview_pixels);
     _preview_pixels = nullptr;
+    log_heap_boundary("Gesture close complete");
 }
 
 void AppGesture::worker(void *context)
@@ -292,7 +406,9 @@ void AppGesture::recognize()
         if (_stop.load()) return;
         if (gate.update(esp_timer_get_time() / 1000, thumbs_up, hands.empty())) {
             ESP_LOGI(TAG, "THUMBS_UP_CONFIRMED %u", ++count);
-            // A future SL request can be queued here without blocking capture.
+            // This is a one-bit event mailbox, separate from the presentation
+            // queue below.  The UI thread consumes it with exchange(false).
+            _thumbs_up_pending.store(true);
         }
         if (gate.latched()) report("Thumbs-up received! Lower your hand", true);
         else {

@@ -12,24 +12,24 @@ const char* response_with_departures = R"json(
 {
   "departures": [
     {
-      "direction": "Sofia",
-      "direction_code": 2,
-      "destination": "Hjorthagen",
+      "direction": "Hjorthagen",
+      "direction_code": 1,
+      "destination": "Sofia",
       "state": "EXPECTED",
       "display": "4 min",
       "line": {"designation": "57", "transport_mode": "BUS"}
     },
     {
-      "direction": "Sofia",
-      "direction_code": 1,
+      "direction": "Hjorthagen",
+      "direction_code": 2,
       "destination": "Hjorthagen",
       "display": "6 min",
       "line": {"designation": "57", "transport_mode": "BUS"}
     },
     {
-      "direction": "Hjorthagen",
+      "direction": "Sofia",
       "direction_code": 2,
-      "destination": "Slussen",
+      "destination": "Hjorthagen",
       "display": "8 min",
       "line": {"designation": "57", "transport_mode": "BUS"}
     },
@@ -48,7 +48,7 @@ const char* response_with_departures = R"json(
       "line": {"designation": "57", "transport_mode": "TRAIN"}
     },
     {
-      "direction": "Sofia",
+      "direction": "Hjorthagen",
       "direction_code": 2,
       "destination": "Hjorthagen",
       "display": "14 min",
@@ -68,6 +68,7 @@ const char* response_for_line_74 = R"json(
   "departures": [
     {
       "direction_code": 2,
+      "direction": "Hornsberg",
       "destination": "Hornsberg",
       "state": "EXPECTED",
       "display": "2 min",
@@ -75,6 +76,7 @@ const char* response_for_line_74 = R"json(
     },
     {
       "direction_code": 1,
+      "direction": "Sickla udde",
       "destination": "Sickla udde",
       "state": "EXPECTED",
       "display": "5 min",
@@ -82,6 +84,7 @@ const char* response_for_line_74 = R"json(
     },
     {
       "direction_code": 2,
+      "direction": "Hornsberg",
       "destination": "Hornsberg",
       "state": "EXPECTED",
       "display": "8 min",
@@ -89,6 +92,7 @@ const char* response_for_line_74 = R"json(
     },
     {
       "direction_code": 2,
+      "direction": "Hornsberg",
       "destination": "Hornsberg",
       "state": "EXPECTED",
       "display": "11 min",
@@ -102,19 +106,19 @@ const char* response_for_line_74 = R"json(
 
 int main()
 {
-    const auto parsed = parse_departures(response_with_departures, "57", 2);
+    const auto parsed = parse_departures(response_with_departures, "57", "Hjorthagen");
     assert(parsed.valid);
     assert(parsed.data.departure_count == 3);
-    assert(parsed.data.departures[0].display == "4 min");
+    assert(parsed.data.departures[0].display == "6 min");
     assert(parsed.data.departures[0].destination == "Hjorthagen");
     assert(parsed.data.departures[1].display == "8 min");
-    assert(parsed.data.departures[1].destination == "Slussen");
+    assert(parsed.data.departures[1].destination == "Hjorthagen");
     assert(parsed.data.departures[2].display == "14 min");
     assert(parsed.data.departures[2].disruption == "Short disruption");
     assert(parsed.data.notice_count == 2);
     assert(parsed.data.notices[0].message == "Tullgårdsparken hållplats");
 
-    const auto line_74 = parse_departures(response_for_line_74, "74", 2);
+    const auto line_74 = parse_departures(response_for_line_74, "74", "Hornsberg");
     assert(line_74.valid);
     assert(line_74.data.departure_count == 2);
     assert(line_74.data.departures[0].display == "2 min");
@@ -198,5 +202,5 @@ int main()
     assert(snapshot.stops[1].departures[0].display.size() <= kMaxTextBytes);
     assert(snapshot.stops[1].notices[0].message.size() <= kMaxTextBytes);
 
-    std::cout << "PASS: SL filtering, direction codes, bounded text, notices, failures and freshness\n";
+    std::cout << "PASS: SL filtering, destination text, bounded text, notices, failures and freshness\n";
 }

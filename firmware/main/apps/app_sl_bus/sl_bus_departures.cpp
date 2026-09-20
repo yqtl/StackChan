@@ -10,7 +10,6 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
-#include <cstdlib>
 #include <limits>
 
 namespace sl_bus {
@@ -23,25 +22,6 @@ const char* string_field(const cJSON* object, const char* name)
     }
     const cJSON* value = cJSON_GetObjectItemCaseSensitive(object, name);
     return cJSON_IsString(value) && value->valuestring != nullptr ? value->valuestring : nullptr;
-}
-
-bool is_integer_field(const cJSON* object, const char* name, int expected)
-{
-    if (!object || !cJSON_IsObject(object)) {
-        return false;
-    }
-
-    const cJSON* value = cJSON_GetObjectItemCaseSensitive(object, name);
-    if (cJSON_IsNumber(value)) {
-        return std::isfinite(value->valuedouble) && value->valuedouble == expected;
-    }
-    if (!cJSON_IsString(value) || value->valuestring == nullptr || value->valuestring[0] == '\0') {
-        return false;
-    }
-
-    char* end = nullptr;
-    const long parsed = std::strtol(value->valuestring, &end, 10);
-    return end != value->valuestring && *end == '\0' && parsed == expected;
 }
 
 int integer_field(const cJSON* object, const char* name)
@@ -235,7 +215,9 @@ std::string bounded_text(std::string_view text, std::size_t max_bytes)
     return std::string(text.substr(0, length));
 }
 
-ParseResult parse_departures(std::string_view response, std::string_view line_designation, int direction_code)
+ParseResult parse_departures(std::string_view response,
+                             std::string_view line_designation,
+                             std::string_view destination)
 {
     ParseResult result;
     if (response.empty()) {
@@ -271,7 +253,7 @@ ParseResult parse_departures(std::string_view response, std::string_view line_de
         if (result.data.departure_count >= kMaxDepartures) {
             break;
         }
-        if (!cJSON_IsObject(item) || !is_integer_field(item, "direction_code", direction_code)) {
+        if (!cJSON_IsObject(item)) {
             continue;
         }
 
@@ -281,8 +263,10 @@ ParseResult parse_departures(std::string_view response, std::string_view line_de
         }
         const char* designation = string_field(line_object, "designation");
         const char* transport_mode = string_field(line_object, "transport_mode");
+        const char* departure_destination = string_field(item, "destination");
         if (!designation || std::string_view(designation) != line_designation || !transport_mode ||
-            !equals_ignore_case(transport_mode, "BUS")) {
+            !equals_ignore_case(transport_mode, "BUS") || !departure_destination ||
+            !equals_ignore_case(departure_destination, destination)) {
             continue;
         }
 
@@ -317,7 +301,7 @@ ParseResult parse_departures(std::string_view response, std::string_view line_de
 
 ParseResult parse_departures(std::string_view response)
 {
-    return parse_departures(response, kStops[0].line, kStops[0].direction_code);
+    return parse_departures(response, kStops[0].line, kStops[0].destination);
 }
 
 uint32_t parse_retry_after_seconds(std::string_view value)

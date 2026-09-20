@@ -19,16 +19,15 @@ inline constexpr std::size_t kStopCount = 2;
 struct StopConfig {
     std::string_view name;
     std::string_view line;
-    int direction_code;
-    std::string_view direction;
+    std::string_view destination;
     std::string_view url;
 };
 
 inline constexpr std::array<StopConfig, kStopCount> kStops = {{
-    {"Tullgårdsparken", "57", 2,
+    {"Tullgårdsparken", "57",
      "Hjorthagen",
      "https://transport.integration.sl.se/v1/sites/1314/departures?transport=BUS&forecast=60"},
-    {"Bohusgatan", "74", 2,
+    {"Bohusgatan", "74",
      "Hornsberg",
      "https://transport.integration.sl.se/v1/sites/1318/departures?transport=BUS&forecast=60"},
 }};
@@ -90,7 +89,7 @@ struct ParseResult {
 // Keep text bounded without cutting a UTF-8 code point in half.
 std::string bounded_text(std::string_view text, std::size_t max_bytes = kMaxTextBytes);
 
-ParseResult parse_departures(std::string_view response, std::string_view line, int direction_code);
+ParseResult parse_departures(std::string_view response, std::string_view line, std::string_view destination);
 ParseResult parse_departures(std::string_view response);
 
 // Retry-After's delta-seconds form is usable even when SNTP has not completed.

@@ -111,7 +111,7 @@ FetchResult DepartureClient::fetch(const StopConfig& stop) const
         return cancelled_result();
     }
 
-    const auto parsed = parse_departures(response, stop.line, stop.direction_code);
+    const auto parsed = parse_departures(response, stop.line, stop.destination);
     if (!parsed.valid) {
         return failed_result(parsed.error.empty() ? "Malformed SL response" : parsed.error, retry_after);
     }

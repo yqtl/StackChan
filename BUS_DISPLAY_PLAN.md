@@ -9,7 +9,7 @@ Deliver this independently of gesture recognition. Keep person-presence activati
 
 ## Display and SL data
 
-- Use verified **site 1314**, bus line **57**, **direction code 2**, and **site 1318**, bus line **74**, **direction code 2**. The live response’s `direction` text can be misleading, so filter using the code and display each departure’s actual `destination`. [Verified Tullgårdsparken departures](https://transport.integration.sl.se/v1/sites/1314/departures).
+- Use verified **site 1314**, bus line **57**, destination **Hjorthagen**, and **site 1318**, bus line **74**, destination **Hornsberg**. Filter by the line designation, `transport_mode`, and the human-readable departure `destination`; do not depend on the numeric `direction_code`, whose mapping is not a stable application contract. Display each departure’s actual `destination`. [Official SL Transport documentation](https://www.trafiklab.se/api/our-apis/sl/transport/).
 - Fetch both `/v1/sites/{siteId}/departures?transport=BUS&forecast=60` endpoints immediately on opening, then every **30 seconds**. SL Transport requires no API key. [Official documentation](https://www.trafiklab.se/api/our-apis/sl/transport/).
 - Show the two stops in fixed side-by-side panels. Use a larger primary time, up to two fixed subsequent rows, and SL’s `display` text directly, preserving its minutes/clock-time format.
 - Do not animate or scroll labels. Clip text within its panel to keep the display calm and information-dense. Show the route destination once when all departures share it; show per-departure destinations only when they differ. Keep the successful state quiet and reserve the compact bottom message for connection, freshness, cancellation and disruption information.

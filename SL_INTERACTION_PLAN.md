@@ -114,7 +114,7 @@ failed-network conditions. Verify the two routes, Swedish characters,
 30-second refresh, stale-data state, Home navigation, and repeated open/close.
 Record the application size and free internal heap after opening and closing.
 Use `sl_bus::kStops` as the source configuration: site 1314 / line 57 /
-direction code 2 and site 1318 / line 74 / direction code 2. This phase validates
+direction `Hjorthagen` and site 1318 / line 74 / direction `Hornsberg`. This phase validates
 the existing configuration; it does not change destinations based on this
 document. Check immediate fetch, 30-second successful refresh, stale marking
 after failure, unavailable values after 90 seconds without success, and recovery.
@@ -487,6 +487,103 @@ was flashed.
 The recommended first demo is therefore about 1.5–3 engineering days. The
 automatic approach is a follow-on experiment, not a prerequisite for delivering
 useful SL information.
+
+## Fresh firmware validation pass — 2026-09-17
+
+The current checkout was rebuilt from a generated-build clean with ESP-IDF
+5.5.4, using the pinned tool cache selected through `IDF_TOOLS_PATH`. The
+configured firmware version is `1.5.1-gesture.7`; the pre-existing binary was
+not used as a validation result.
+
+- Full `firmware/build_gesture.sh` rebuild: **PASS**.
+- Link-map guard: **PASS**; all 12 hand convolution kernels resolve to
+  ESP-DL. Build log: `/tmp/stackchan-fresh-build.log`.
+- Host suite: **PASS**, 5/5 CTest tests with `-Wall -Wextra -Werror` and UBSan
+  (`motion_math_test`, `gesture_gate_test`, `gesture_transition_test`,
+  `deferred_app_launch_test`, and `sl_bus_parser_test`). Results are in
+  `/tmp/stackchan-fresh-tests.log`.
+- Fresh application image: `0x4dcba0` / 5,098,400 bytes in the unchanged
+  `0x4f0000` / 5,177,344-byte OTA slot; `0x13460` / 78,944 bytes free.
+- Fresh model images: `hand_detect.espdl` `0x79620` / 497,184 bytes of
+  `0x80000`, and `hand_gesture_cls.espdl` `0xc0360` / 787,296 bytes of
+  `0xd0000`; both fit.
+- `esptool image_info`: **PASS**; checksum `0x7a` valid and validation hash
+  `a0a2cec8b934cb082afc702deca697ecdf22742ce07d8c39c9739176361edb33` valid.
+- Generated partition table and flash plan: **PASS**; `ota_0` is at
+  `0x20000`, `ota_1` is at `0x510000`, and model offsets match the protected
+  layout. The generated full plan was not used for flashing.
+- Protected-file and whitespace checks: **PASS**; `partitions.csv`,
+  `dependencies.lock`, and `repos.json` are unchanged, and `git diff --check`
+  is clean.
+
+At that 2026-09-17 checkpoint hardware acceptance was still **PENDING**: no
+ESP32-S3 serial device was enumerated, so the read-only device checks could not
+be performed and nothing was flashed. The current hardware status is recorded
+in the dated update below.
+
+## Direction matching and device update — 2026-09-19
+
+The SL departure filter was updated to use the API's human-readable
+`destination` field rather than treating the numeric `direction_code` or the
+inconsistent `direction` text as a stable route selector. The configured routes
+remain site 1314 / line 57 / `Hjorthagen` and site 1318 / line 74 / `Hornsberg`;
+the displayed value remains the API's actual `destination`. The parser and host fixture changes are in
+`firmware/main/apps/app_sl_bus/sl_bus_departures.{h,cpp}`,
+`sl_bus_departure_client.cpp`, and `firmware/tests/sl_bus_parser_test.cpp`.
+
+Validation for the replacement image:
+
+- ESP-IDF **5.5.4** full rebuild: **PASS**; link-map guard: **PASS** with all
+  12 ESP-DL hand convolution kernels resolved.
+- Host suite: **PASS**, 5/5 CTest tests with warnings-as-errors and UBSan.
+- Application image: `0x4dce70` / 5,099,120 bytes in the unchanged `0x4f0000`
+  OTA slot; 78,224 bytes remain. Model sizes remain within their protected
+  partitions. The image also retries one failed stop request after a transient
+  HTTP/TLS close and logs each stop result. Fresh image SHA-256:
+  `ca5b00269b7a5c26df21a99970177371ab92309c6b0ae36296b6354a9a872cda`.
+- Fresh `esptool image_info`: checksum and validation hash **PASS**; the
+  validation hash is `9fac292dfd570b63035e5a7909a3cadd1eed8e367da1d45955c989cbb97c38fd`.
+- Read-only device checks: **PASS** for ESP32-S3, 16 MB flash, the generated
+  partition table, `ota_0` at `0x20000`, and the preserved factory `ota_1` at
+  `0x510000`. OTA metadata selected `ota_0` before the update.
+- Flash: **PASS**. Only the application range `0x20000`–`0x4fcfff` was written;
+  esptool verified the data and the boot log confirms the new image from
+  `ota_0` (`1.5.1-gesture.7`). Evidence is retained in
+  `/tmp/stackchan-retry-fix-build.log`,
+  `/tmp/stackchan-retry-fix-flash.log`,
+  `/tmp/stackchan-retry-fix-boot.log`, and the read-only device dumps in
+  `/tmp/stackchan-retry-fix-device-*`.
+
+The live SL endpoints returned both configured routes during this check. The
+first corrected-image interaction capture verified the required cleanup and
+launch ordering but exposed a transient TLS receive EOF (`-0x004C`) on its
+second HTTPS request. The retry image was then installed. Its controlled
+hardware capture verified one thumbs-up transition followed by successful
+fetches for both stops (`3` departures each), and a second successful refresh
+about 30 seconds later. The Gesture drain/close-before-SL-open ordering is
+**PASS** in `/tmp/stackchan-retry-fix-interaction.log`.
+
+The manual online/offline matrix, Home cancellation, and ten-cycle heap and
+camera-reuse checks remain **PENDING**. The 24-hour powered soak was started
+2026-09-19 11:41 CEST with the device left in SL.BUS; the non-resetting capture
+is `/tmp/stackchan-retry-fix-24h-soak.log`.
+
+## 24-hour powered soak review — 2026-09-20
+
+The configured 86,400-second capture interval completed on 2026-09-20. The
+soak log contains 2,766 successful fetches for each configured stop (5,532
+total). Seven request-level failures requested the one-attempt retry; there
+were no final `SL.BUS: fetch failed` results. Intermittent TLS read/close
+messages (`-0x004C`) were observed, but did not prevent the subsequent
+successful refreshes.
+
+The log review found no panic, assertion, watchdog, stack-canary, brownout,
+abort, or reset markers. Across 8,638 `SystemInfo` samples, free SRAM ranged
+from 111,907 to 120,419 bytes and ended at 120,251 bytes; the reported
+minimal SRAM remained 64,747 bytes. The powered-soak result is **PASS** for
+network refresh continuity and runtime stability. The manual online/offline,
+Home-cancellation, and ten-cycle heap/camera-reuse checks are still required
+before hardware acceptance is complete. Presence detection remains deferred.
 
 ## Out of scope
 

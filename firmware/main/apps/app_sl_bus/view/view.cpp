@@ -63,7 +63,7 @@ std::string route_text(std::size_t stop_index, const sl_bus::StopSnapshot& snaps
         if (snapshot.departure_count > 0 && !snapshot.departures[0].destination.empty()) {
             text += snapshot.departures[0].destination;
         } else {
-            text += sl_bus::kStops[stop_index].direction;
+            text += sl_bus::kStops[stop_index].destination;
         }
     }
     return text;

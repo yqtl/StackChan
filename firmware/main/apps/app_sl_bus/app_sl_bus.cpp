@@ -166,18 +166,31 @@ void AppSlBus::run_worker()
         bool all_success = true;
         uint32_t server_retry_after = 0;
         for (std::size_t stop_index = 0; stop_index < sl_bus::kStopCount; ++stop_index) {
-            const auto result = client.fetch(sl_bus::kStops[stop_index]);
+            const auto& stop = sl_bus::kStops[stop_index];
+            auto result = client.fetch(stop);
+            if (result.status == sl_bus::FetchResultStatus::Failed && !_stop.load()) {
+                ESP_LOGW(TAG, "fetch failed stop=%.*s: %s; retrying once",
+                         static_cast<int>(stop.name.size()), stop.name.data(), result.error.c_str());
+                GetHAL().delay(250);
+                result = client.fetch(stop);
+            }
             if (_stop.load() || result.status == sl_bus::FetchResultStatus::Cancelled) {
                 return;
             }
 
             if (result.status == sl_bus::FetchResultStatus::Success) {
+                ESP_LOGI(TAG, "fetch success stop=%.*s departures=%u notices=%u",
+                         static_cast<int>(stop.name.size()), stop.name.data(),
+                         static_cast<unsigned>(result.data.departure_count),
+                         static_cast<unsigned>(result.data.notice_count));
                 _store.publish_success(stop_index, result.data, monotonic_ms());
                 continue;
             }
 
             all_success = false;
             server_retry_after = std::max(server_retry_after, result.retry_after_seconds);
+            ESP_LOGE(TAG, "fetch failed stop=%.*s: %s",
+                     static_cast<int>(stop.name.size()), stop.name.data(), result.error.c_str());
             _store.publish_failure(stop_index, result.error.empty() ? "SL update failed" : result.error);
         }
 

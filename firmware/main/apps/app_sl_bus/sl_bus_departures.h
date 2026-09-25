@@ -105,6 +105,8 @@ public:
     void set_fetching(std::size_t stop_index);
     void publish_success(std::size_t stop_index, const StopDepartureData& data, uint64_t now_ms);
     void publish_failure(std::size_t stop_index, std::string_view error);
+    bool copy_if_changed(DepartureSnapshot& output, bool force = false) const;
+    void update_expiry(DepartureSnapshot& snapshot, uint64_t now_ms) const;
     DepartureSnapshot snapshot(uint64_t now_ms) const;
 
 private:

@@ -54,3 +54,18 @@ target_include_directories(sl_bus_parser_test PRIVATE
 )
 target_compile_features(sl_bus_parser_test PRIVATE cxx_std_17)
 add_test(NAME sl_bus_parser_test COMMAND $<TARGET_FILE:sl_bus_parser_test>)
+
+add_executable(sl_bus_reliability_test
+    sl_bus_reliability_test.cpp
+    ../main/apps/app_sl_bus/sl_bus_departure_client.cpp
+    ../main/apps/app_sl_bus/sl_bus_departures.cpp
+    ../main/apps/app_sl_bus/sl_bus_poll_schedule.cpp
+    ../managed_components/espressif__cjson/cJSON/cJSON.c
+)
+target_include_directories(sl_bus_reliability_test PRIVATE
+    ../main/apps/app_sl_bus
+    ../managed_components/78__esp-ml307/include
+    ../managed_components/espressif__cjson/cJSON
+)
+target_compile_features(sl_bus_reliability_test PRIVATE cxx_std_17)
+add_test(NAME sl_bus_reliability_test COMMAND $<TARGET_FILE:sl_bus_reliability_test>)

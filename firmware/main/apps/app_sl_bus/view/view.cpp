@@ -209,6 +209,15 @@ void SlBusView::update(const sl_bus::DepartureSnapshot& snapshot, bool network_w
     _last_network_waiting = network_waiting;
 }
 
+void SlBusView::show_closing()
+{
+    if (_closing_shown || _stops[0].message == nullptr) {
+        return;
+    }
+    _stops[0].message->setText("Closing...");
+    _closing_shown = true;
+}
+
 void SlBusView::render(const sl_bus::DepartureSnapshot& snapshot, bool network_waiting)
 {
     for (std::size_t stop_index = 0; stop_index < sl_bus::kStopCount; ++stop_index) {

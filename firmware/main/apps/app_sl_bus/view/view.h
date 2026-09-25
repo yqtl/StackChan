@@ -23,6 +23,7 @@ public:
     ~SlBusView();
 
     void update(const sl_bus::DepartureSnapshot& snapshot, bool network_waiting);
+    void show_closing();
 
 private:
     struct StopWidgets {
@@ -42,6 +43,7 @@ private:
     uint32_t _last_generation = UINT32_MAX;
     std::array<bool, sl_bus::kStopCount> _last_expired{};
     bool _last_network_waiting = false;
+    bool _closing_shown = false;
 
     void render(const sl_bus::DepartureSnapshot& snapshot, bool network_waiting);
 };

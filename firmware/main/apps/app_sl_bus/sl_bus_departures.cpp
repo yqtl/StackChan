@@ -400,15 +400,29 @@ void DepartureStore::publish_failure(std::size_t stop_index, std::string_view er
     ++_snapshot.generation;
 }
 
-DepartureSnapshot DepartureStore::snapshot(uint64_t now_ms) const
+bool DepartureStore::copy_if_changed(DepartureSnapshot& output, bool force) const
 {
     std::lock_guard<std::mutex> lock(_mutex);
-    auto result = _snapshot;
-    for (auto& stop : result.stops) {
-        stop.expired = stop.last_success_ms == 0 ||
-                       (now_ms >= stop.last_success_ms &&
-                        now_ms - stop.last_success_ms >= kDataExpiryMs);
+    if (!force && output.generation == _snapshot.generation) {
+        return false;
     }
+    output = _snapshot;
+    return true;
+}
+
+void DepartureStore::update_expiry(DepartureSnapshot& snapshot, uint64_t now_ms) const
+{
+    for (auto& stop : snapshot.stops) {
+        stop.expired = stop.last_success_ms == 0 ||
+                       (now_ms >= stop.last_success_ms && now_ms - stop.last_success_ms >= kDataExpiryMs);
+    }
+}
+
+DepartureSnapshot DepartureStore::snapshot(uint64_t now_ms) const
+{
+    DepartureSnapshot result;
+    copy_if_changed(result, true);
+    update_expiry(result, now_ms);
     return result;
 }
 

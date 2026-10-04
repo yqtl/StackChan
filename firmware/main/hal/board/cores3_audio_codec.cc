@@ -231,6 +231,51 @@ void CoreS3AudioCodec::EnableOutput(bool enable) {
     AudioCodec::EnableOutput(enable);
 }
 
+bool CoreS3AudioCodec::TryAppEnableOutput(bool enable) {
+    if (enable == output_enabled_) {
+        return true;
+    }
+
+    if (enable) {
+        esp_codec_dev_sample_info_t fs = {
+            .bits_per_sample = 16,
+            .channel = 1,
+            .channel_mask = 0,
+            .sample_rate = (uint32_t)output_sample_rate_,
+            .mclk_multiple = 0,
+        };
+        esp_err_t result = esp_codec_dev_open(output_dev_, &fs);
+        if (result != ESP_OK) {
+            return false;
+        }
+        result = esp_codec_dev_set_out_vol(output_dev_, output_volume_);
+        if (result != ESP_OK) {
+            esp_codec_dev_close(output_dev_);
+            return false;
+        }
+        AudioCodec::EnableOutput(true);
+        return true;
+    }
+
+    const esp_err_t result = esp_codec_dev_close(output_dev_);
+    if (result != ESP_OK) {
+        return false;
+    }
+    AudioCodec::EnableOutput(false);
+    return true;
+}
+
+bool CoreS3AudioCodec::TryAppOutputData(std::vector<int16_t>& data) {
+    if (!output_enabled_ || data.empty()) {
+        return false;
+    }
+    const esp_err_t result = esp_codec_dev_write(output_dev_, data.data(), data.size() * sizeof(int16_t));
+    if (result != ESP_OK) {
+        return false;
+    }
+    return true;
+}
+
 int CoreS3AudioCodec::Read(int16_t* dest, int samples) {
     if (input_enabled_) {
         ESP_ERROR_CHECK_WITHOUT_ABORT(esp_codec_dev_read(input_dev_, (void*)dest, samples * sizeof(int16_t)));

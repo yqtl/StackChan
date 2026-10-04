@@ -32,6 +32,8 @@ public:
     virtual void SetOutputVolume(int volume) override;
     virtual void EnableInput(bool enable) override;
     virtual void EnableOutput(bool enable) override;
+    bool TryAppEnableOutput(bool enable);
+    bool TryAppOutputData(std::vector<int16_t>& data);
 };
 
 #endif // _BOX_AUDIO_CODEC_H

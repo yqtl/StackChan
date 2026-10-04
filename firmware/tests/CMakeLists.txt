@@ -69,3 +69,8 @@ target_include_directories(sl_bus_reliability_test PRIVATE
 )
 target_compile_features(sl_bus_reliability_test PRIVATE cxx_std_17)
 add_test(NAME sl_bus_reliability_test COMMAND $<TARGET_FILE:sl_bus_reliability_test>)
+
+add_executable(focus_timer_model_test focus_timer_model_test.cpp)
+target_include_directories(focus_timer_model_test PRIVATE ../main/apps/app_focus_timer)
+target_compile_features(focus_timer_model_test PRIVATE cxx_std_17)
+add_test(NAME focus_timer_model_test COMMAND $<TARGET_FILE:focus_timer_model_test>)

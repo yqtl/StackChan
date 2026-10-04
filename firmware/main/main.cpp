@@ -47,6 +47,7 @@ extern "C" void app_main(void)
         auto sl_bus = std::make_unique<AppSlBus>();
         auto *sl_bus_ptr = sl_bus.get();
         const int sl_bus_id = GetMooncake().installApp(std::move(sl_bus));
+        GetMooncake().installApp(std::make_unique<AppFocusTimer>());
 
         if (launcher_ptr && gesture_ptr && sl_bus_ptr && launcher_id >= 0 && gesture_id >= 0 && sl_bus_id >= 0) {
             gesture_ptr->onThumbsUpConfirmed =

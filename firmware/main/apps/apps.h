@@ -14,3 +14,4 @@
 #include "app_dance/app_dance.h"
 #include "app_gesture/app_gesture.h"
 #include "app_sl_bus/app_sl_bus.h"
+#include "app_focus_timer/app_focus_timer.h"

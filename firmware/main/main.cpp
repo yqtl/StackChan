@@ -3,6 +3,7 @@
  *
  * SPDX-License-Identifier: MIT
  */
+#include <sdkconfig.h>
 #include <smooth_ui_toolkit.hpp>
 #include <uitk/short_namespace.hpp>
 #include <mooncake_log.h>
@@ -35,11 +36,21 @@ extern "C" void app_main(void)
         auto *launcher_ptr = launcher.get();
         const int launcher_id = GetMooncake().installApp(std::move(launcher));
         GetMooncake().installApp(std::make_unique<AppAiAgent>());
+#if CONFIG_STACKCHAN_APP_AVATAR
         GetMooncake().installApp(std::make_unique<AppAvatar>());
+#endif
+#if CONFIG_STACKCHAN_APP_ESPNOW_REMOTE
         GetMooncake().installApp(std::make_unique<AppEspnowControl>());
+#endif
+#if CONFIG_STACKCHAN_APP_APP_CENTER
         GetMooncake().installApp(std::make_unique<AppAppCenter>());
+#endif
+#if CONFIG_STACKCHAN_APP_EZDATA
         GetMooncake().installApp(std::make_unique<AppEzdata>());
+#endif
+#if CONFIG_STACKCHAN_APP_DANCE
         GetMooncake().installApp(std::make_unique<AppDance>());
+#endif
         GetMooncake().installApp(std::make_unique<AppSetup>());
         auto gesture = std::make_unique<AppGesture>();
         auto *gesture_ptr = gesture.get();

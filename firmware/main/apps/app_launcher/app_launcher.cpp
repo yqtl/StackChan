@@ -8,6 +8,7 @@
 #include <mooncake.h>
 #include <mooncake_log.h>
 #include <stackchan/stackchan.h>
+#include <apps/common/common.h>
 #include <cstdint>
 
 using namespace mooncake;
@@ -15,6 +16,8 @@ using namespace mooncake;
 void AppLauncher::onLauncherCreate()
 {
     mclog::tagInfo(getAppInfo().name, "on create");
+
+    common::LauncherAppId = getID();
 
     // 打开自己
     open();

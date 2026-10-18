@@ -285,7 +285,7 @@ void AppAvatar::onClose()
         view::destroy_status_bar();
     }
 
-    GetHAL().requestWarmReboot(1);
+    GetHAL().requestWarmReboot(common::get_launcher_position(getID()));
 }
 
 void AppAvatar::check_auto_angle_sync_mode()

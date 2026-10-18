@@ -47,6 +47,9 @@ enum class Pose : uint8_t {
     WaveRight,
 };
 
+// Title hint while StackChan asks for the break rhythm.
+enum class CuePrompt : uint8_t { None, Watch, Tap, Retry };
+
 struct ViewState {
     State state = State::Ready;
     Phase phase = Phase::Focus;
@@ -57,6 +60,7 @@ struct ViewState {
     uint8_t focus_minutes = 25;
     uint8_t break_minutes = 5;
     bool sound_enabled = true;
+    CuePrompt cue_prompt = CuePrompt::None;
 };
 
 class FocusTimerView {
@@ -117,6 +121,7 @@ private:
     bool _have_run_header = false;
     State _last_run_state = State::Ready;
     Phase _last_run_phase = Phase::Focus;
+    CuePrompt _last_cue_prompt = CuePrompt::None;
 
     std::unique_ptr<Button> make_button(const char* text, int x, int y, int width, int height,
                                         Action action, uint32_t color = 0x104F61);

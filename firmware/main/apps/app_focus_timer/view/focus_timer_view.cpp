@@ -319,9 +319,18 @@ void FocusTimerView::update(const ViewState& state)
         return;
     }
 
-    if (!_have_run_header || _last_run_state != state.state || _last_run_phase != state.phase) {
+    if (!_have_run_header || _last_run_state != state.state || _last_run_phase != state.phase ||
+        _last_cue_prompt != state.cue_prompt) {
         if (state.state == State::Completed) {
-            _run_title->setText(state.phase == Phase::Focus ? "Focus complete" : "Break complete");
+            const char* title = state.phase == Phase::Focus ? "Focus complete" : "Break complete";
+            if (state.cue_prompt == CuePrompt::Watch) {
+                title = "Watch my nods";
+            } else if (state.cue_prompt == CuePrompt::Tap) {
+                title = "Tap my head back";
+            } else if (state.cue_prompt == CuePrompt::Retry) {
+                title = "Not quite, again";
+            }
+            _run_title->setText(title);
             _run_first_action = state.phase == Phase::Focus ? Action::StartBreak : Action::StartFocus;
             _run_first->label().setText(state.phase == Phase::Focus ? "Start break" : "Start focus");
         } else if (state.state == State::Paused) {
@@ -335,6 +344,7 @@ void FocusTimerView::update(const ViewState& state)
         }
         _last_run_state = state.state;
         _last_run_phase = state.phase;
+        _last_cue_prompt = state.cue_prompt;
         _have_run_header = true;
     }
 

@@ -188,6 +188,6 @@ void AppSetup::onClose()
     view::destroy_status_bar();
 
     if (_need_warm_reset) {
-        GetHAL().requestWarmReboot(6);
+        GetHAL().requestWarmReboot(common::get_launcher_position(getID()));
     }
 }

@@ -9,6 +9,7 @@
 #include <mooncake_log.h>
 #include <assets/assets.h>
 #include <stackchan/stackchan.h>
+#include <apps/common/common.h>
 
 using namespace mooncake;
 using namespace stackchan;
@@ -97,5 +98,5 @@ void AppEzdata::onClose()
     view::destroy_home_indicator();
     view::destroy_status_bar();
 
-    GetHAL().requestWarmReboot(4);
+    GetHAL().requestWarmReboot(common::get_launcher_position(getID()));
 }

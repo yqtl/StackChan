@@ -9,6 +9,7 @@
 #include "status_bar/status_bar.h"
 #include "reminder/reminder.h"
 #include "toast/toast.h"
+#include "launcher_position.hpp"
 #include <string_view>
 
 namespace common {

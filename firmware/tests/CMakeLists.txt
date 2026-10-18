@@ -74,3 +74,8 @@ add_executable(focus_timer_model_test focus_timer_model_test.cpp)
 target_include_directories(focus_timer_model_test PRIVATE ../main/apps/app_focus_timer)
 target_compile_features(focus_timer_model_test PRIVATE cxx_std_17)
 add_test(NAME focus_timer_model_test COMMAND $<TARGET_FILE:focus_timer_model_test>)
+
+add_executable(focus_break_cue_test focus_break_cue_test.cpp)
+target_include_directories(focus_break_cue_test PRIVATE ../main/apps/app_focus_timer)
+target_compile_features(focus_break_cue_test PRIVATE cxx_std_17)
+add_test(NAME focus_break_cue_test COMMAND $<TARGET_FILE:focus_break_cue_test>)

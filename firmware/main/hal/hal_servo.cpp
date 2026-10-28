@@ -102,6 +102,17 @@ public:
         return angle;
     }
 
+    bool readFeedback(int& angle, bool& moving) override
+    {
+        const int current_pos = _scs_bus.ReadPos(_config.id);
+        if (!is_raw_pos_valid(current_pos)) return false;
+        const int movement = _scs_bus.ReadMove(_config.id);
+        if (movement < 0) return false;
+        angle = uitk::clamp(raw_pos_to_angle(current_pos), getAngleLimit().x, getAngleLimit().y);
+        moving = movement != 0;
+        return true;
+    }
+
     bool is_moving_impl() override
     {
         int moving = _scs_bus.ReadMove(_config.id);
@@ -346,7 +357,7 @@ void Hal::servo_init()
     ServoConfig_t pitch_servo_config;
     pitch_servo_config.id                     = 2;
     pitch_servo_config.defaultZeroPos         = 620;
-    pitch_servo_config.angleLimit             = Vector2i(30, 870);
+    pitch_servo_config.angleLimit             = Vector2i(50, 850);
     pitch_servo_config.rawPosLimit            = Vector2i(0, 1000);
     pitch_servo_config.settingNs              = "servo";
     pitch_servo_config.settingZeroPositionKey = "zero_pos_2";

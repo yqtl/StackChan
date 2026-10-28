@@ -1,0 +1,20 @@
+[Unit]
+Description=StackChan local surveillance receiver
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.local/share/stackchan-surveillance/receiver
+ExecStart=%h/.local/share/stackchan-surveillance/receiver/.venv/bin/python %h/.local/share/stackchan-surveillance/receiver/receiver.py --config %h/.config/stackchan-surveillance/receiver.json
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.local/share/stackchan-surveillance
+PrivateTmp=true
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=default.target

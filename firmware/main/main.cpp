@@ -48,12 +48,16 @@ extern "C" void app_main(void)
         auto *sl_bus_ptr = sl_bus.get();
         const int sl_bus_id = GetMooncake().installApp(std::move(sl_bus));
         GetMooncake().installApp(std::make_unique<AppFocusTimer>());
+        const int surveillance_id = GetMooncake().installApp(std::make_unique<AppSurveillance>());
 
         if (launcher_ptr && gesture_ptr && sl_bus_ptr && launcher_id >= 0 && gesture_id >= 0 && sl_bus_id >= 0) {
             gesture_ptr->onThumbsUpConfirmed =
                 [launcher_ptr, gesture_id, sl_bus_id]() {
                     return launcher_ptr->requestAppAfterClose(gesture_id, sl_bus_id);
                 };
+        }
+        if (surveillance_id < 0) {
+            mclog::tagError("Launcher", "failed to install Surveillance app");
         }
 
         // Main loop

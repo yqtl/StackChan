@@ -1,2 +1,4 @@
 .DS_Store
 .idea/
+/firmware/main/apps/app_surveillance/connection_profile.h
+/tools/surveillance/__pycache__/

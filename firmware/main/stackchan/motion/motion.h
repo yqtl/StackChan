@@ -108,6 +108,8 @@ public:
      */
     void stop();
 
+    void cancelAndRelease();
+
     /**
      * @brief Moves the head using normalized coordinates ranging from -1.0 to 1.0.
      *

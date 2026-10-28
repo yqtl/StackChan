@@ -75,6 +75,12 @@ void Motion::stop()
     _pitch_servo->move(_pitch_servo->getCurrentAngle());
 }
 
+void Motion::cancelAndRelease()
+{
+    _yaw_servo->cancelAndRelease();
+    _pitch_servo->cancelAndRelease();
+}
+
 void Motion::lookAtNormalized(float x, float y, int speed)
 {
     auto angles = calculateNormalizedLookAngles(

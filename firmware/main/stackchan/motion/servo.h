@@ -70,6 +70,23 @@ public:
      */
     virtual int getCurrentAngle();
 
+    // Safety-sensitive motion requires live servo feedback. The ordinary
+    // angle getter can return its animation value after a read failure.
+    virtual bool readFeedback(int& angle, bool& moving)
+    {
+        angle = getCurrentAngle();
+        moving = isMoving();
+        return false;
+    }
+
+    // Cancel the software trajectory and release holding torque without
+    // issuing another position command.
+    void cancelAndRelease()
+    {
+        stop_motion_at_angle(getCurrentAngle());
+        setTorqueEnabled(false);
+    }
+
     /**
      * @brief
      *

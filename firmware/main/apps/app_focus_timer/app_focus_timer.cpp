@@ -509,6 +509,8 @@ focus_timer::ViewState AppFocusTimer::make_view_state(uint64_t now_us) const
     state.focus_minutes = _preferences.focus_minutes;
     state.break_minutes = _preferences.break_minutes;
     state.sound_enabled = _preferences.sound_enabled;
+    state.tap_count = _cue.taps();
+    state.tap_serial = _cue.tap_serial();
     switch (_cue.stage()) {
         case focus_timer::CueStage::Turning:
         case focus_timer::CueStage::Nodding:

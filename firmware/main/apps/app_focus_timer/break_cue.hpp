@@ -11,8 +11,9 @@
 namespace focus_timer {
 
 // Physical "time for a break" exchange shown when a focus phase completes:
-// StackChan faces the user, lights up, nods N times and waits for N head
-// taps. A match starts the break; a mismatch shakes the head and replays.
+// StackChan faces the user, nods N times (blue LED), then waits for N head
+// taps (amber LED, each tap flashes white and bobs the head). A match starts
+// the break (green LED, hop); a mismatch shakes the head (red LED) and replays.
 // The cue only produces commands, so the timing is host-testable.
 enum class CueStage : uint8_t { Idle, Turning, Nodding, Listening, Missed, Matched, Resting };
 
@@ -31,15 +32,18 @@ constexpr int16_t kCueFacePitch = 200;
 constexpr int16_t kCueNodPitch = 50;
 constexpr int16_t kCueShakeYaw = 120;
 constexpr int16_t kCueHopPitch = 350;
+constexpr int16_t kCueTapBobPitch = 150;
 constexpr int16_t kCueTurnSpeed = 300;
 constexpr int16_t kCueNodSpeed = 700;
 constexpr int16_t kCueHomeSpeed = 200;
 
-constexpr uint32_t kCueBreakColor = 0x2EC4B6;
-constexpr uint32_t kCueRestColor = 0x0A3A36;
-constexpr uint32_t kCueMissColor = 0xFF8C42;
-constexpr uint32_t kCueMatchColor = 0xB8FFD8;
 constexpr uint32_t kCueOffColor = 0x000000;
+constexpr uint32_t kCueBreakColor = 0x2F6BFF;   // demo: watch the nods
+constexpr uint32_t kCueListenColor = 0xFFB300;  // your turn: tap
+constexpr uint32_t kCueTapColor = 0xFFFFFF;     // a tap was received
+constexpr uint32_t kCueMissColor = 0xFF2D2D;    // reject
+constexpr uint32_t kCueMatchColor = 0x2EE86B;   // accept
+constexpr uint32_t kCueRestColor = kCueOffColor;
 
 constexpr uint8_t kCueMinimumNods = 1;
 constexpr uint8_t kCueMaximumNods = 4;
@@ -49,6 +53,7 @@ constexpr uint64_t kCueTurnMinimumUs = 400000ULL;
 constexpr uint64_t kCueTurnMaximumUs = 2500000ULL;
 constexpr uint64_t kCueNodHalfUs = 350000ULL;
 constexpr uint64_t kCueAfterNodsUs = 300000ULL;
+constexpr uint64_t kCueTapFlashUs = 180000ULL;
 constexpr uint64_t kCueTapSettleUs = 1000000ULL;
 constexpr uint64_t kCueListenTimeoutUs = 8000000ULL;
 constexpr uint64_t kCueShakeStepUs = 300000ULL;
@@ -80,7 +85,13 @@ public:
             if (taps_ < UINT8_MAX) {
                 ++taps_;
             }
+            ++tap_serial_;
             last_tap_us_ = now_us;
+            tap_flash_ = true;
+            CueCommand command = move_to(kCueFaceYaw, kCueTapBobPitch, kCueNodSpeed);
+            command.light = true;
+            command.rgb = kCueTapColor;
+            return command;
         } else if (stage_ == CueStage::Resting) {
             return enter_turning(now_us);
         }
@@ -104,7 +115,11 @@ public:
                     stage_ = CueStage::Listening;
                     stage_start_us_ = now_us;
                     taps_ = 0;
-                    return {};
+                    tap_flash_ = false;
+                    CueCommand command;
+                    command.light = true;
+                    command.rgb = kCueListenColor;
+                    return command;
                 }
                 const uint32_t step = static_cast<uint32_t>(std::min(elapsed, nodding_us) / kCueNodHalfUs);
                 if (step == step_) {
@@ -115,6 +130,13 @@ public:
                 return move_to(kCueFaceYaw, down ? kCueNodPitch : kCueFacePitch, kCueNodSpeed);
             }
             case CueStage::Listening:
+                if (tap_flash_ && now_us - last_tap_us_ >= kCueTapFlashUs) {
+                    tap_flash_ = false;
+                    CueCommand command = move_to(kCueFaceYaw, kCueFacePitch, kCueNodSpeed);
+                    command.light = true;
+                    command.rgb = kCueListenColor;
+                    return command;
+                }
                 if (taps_ > 0 && now_us - last_tap_us_ >= kCueTapSettleUs) {
                     return taps_ == expected_ ? enter_matched(now_us) : enter_missed(now_us);
                 }
@@ -163,6 +185,8 @@ public:
     uint8_t expected() const { return expected_; }
     uint8_t taps() const { return taps_; }
     uint8_t calls() const { return calls_; }
+    // Counts every accepted tap, so a view can animate each one.
+    uint32_t tap_serial() const { return tap_serial_; }
 
 private:
     static CueCommand move_to(int16_t yaw, int16_t pitch, int16_t speed)
@@ -238,6 +262,8 @@ private:
     uint64_t stage_start_us_ = 0;
     uint64_t last_tap_us_ = 0;
     uint32_t step_ = 0;
+    uint32_t tap_serial_ = 0;
+    bool tap_flash_ = false;
     uint8_t expected_ = 2;
     uint8_t taps_ = 0;
     uint8_t calls_ = 0;

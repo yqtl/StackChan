@@ -52,10 +52,18 @@ int main()
         uint64_t now = run_to_listening(cue, 600 * kMs, &downs);
         assert(downs + 1 == 2);  // The entry command is the first nod.
 
-        // Early taps are ignored; matching taps start the break after settling.
-        cue.on_tap(now);
+        // Each tap flashes white and bobs; the listening colour returns after.
+        const CueCommand tap = cue.on_tap(now);
+        assert(tap.light && tap.rgb == kCueTapColor);
+        assert(tap.move && tap.pitch == kCueTapBobPitch);
+        assert(cue.tap_serial() == 1);
+        assert(!cue.update(now + kCueTapFlashUs - 1, false).light);
+        const CueCommand restore = cue.update(now + kCueTapFlashUs, false);
+        assert(restore.light && restore.rgb == kCueListenColor);
+        assert(restore.move && restore.pitch == kCueFacePitch);
         cue.on_tap(now + 300 * kMs);
         assert(cue.taps() == 2);
+        assert(cue.tap_serial() == 2);
         assert(!cue.update(now + 1200 * kMs, false).start_break);
         const CueCommand matched = cue.update(now + 1300 * kMs, false);
         assert(matched.start_break);
@@ -92,8 +100,9 @@ int main()
         cue.begin(2, 0);
         cue.update(kCueTurnMinimumUs, false);
         assert(cue.stage() == CueStage::Nodding);
-        cue.on_tap(kCueTurnMinimumUs + 10 * kMs);
+        assert(!cue.on_tap(kCueTurnMinimumUs + 10 * kMs).light);
         assert(cue.taps() == 0);
+        assert(cue.tap_serial() == 0);
     }
 
     {
@@ -102,6 +111,7 @@ int main()
         cue.begin(2, 0);
         uint64_t now = run_to_listening(cue, 0);
         cue.on_tap(now);
+        cue.update(now + kCueTapFlashUs, false);  // Flash ends first.
         const CueCommand missed = cue.update(now + kCueTapSettleUs, false);
         assert(cue.stage() == CueStage::Missed);
         assert(!missed.start_break);
@@ -117,6 +127,7 @@ int main()
         cue.on_tap(now);
         cue.on_tap(now + 200 * kMs);
         cue.on_tap(now + 400 * kMs);
+        cue.update(now + 400 * kMs + kCueTapFlashUs, false);
         assert(!cue.update(now + 400 * kMs + kCueTapSettleUs, false).start_break);
         assert(cue.stage() == CueStage::Missed);
     }

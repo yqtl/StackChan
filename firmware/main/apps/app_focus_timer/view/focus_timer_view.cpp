@@ -83,6 +83,8 @@ FocusTimerView::FocusTimerView(std::function<void(Action)> on_action) : _on_acti
     _run_extend = make_button("+5 min", 113, 145, 94, 44, Action::Extend);
     _run_finish = make_button("Finish", 217, 145, 94, 44, Action::Finish);
 
+    create_tap_effect();
+
     set_ready_hidden(false);
     set_visible(_run_title->get(), false);
     set_visible(_countdown->get(), false);
@@ -326,9 +328,9 @@ void FocusTimerView::update(const ViewState& state)
             if (state.cue_prompt == CuePrompt::Watch) {
                 title = "Watch my nods";
             } else if (state.cue_prompt == CuePrompt::Tap) {
-                title = "Tap my head back";
+                title = "Your turn! Tap my head";
             } else if (state.cue_prompt == CuePrompt::Retry) {
-                title = "Not quite, again";
+                title = "Not quite, watch again";
             }
             _run_title->setText(title);
             _run_first_action = state.phase == Phase::Focus ? Action::StartBreak : Action::StartFocus;
@@ -363,6 +365,98 @@ void FocusTimerView::update(const ViewState& state)
         _last_progress = state.progress_per_mille;
     }
     set_pose(state.pose);
+    update_tap_effect(state);
+}
+
+void FocusTimerView::create_tap_effect()
+{
+    constexpr int kFxW = 120;
+    constexpr int kFxH = 100;
+    _tap_fx = lv_obj_create(_root->get());
+    lv_obj_remove_style_all(_tap_fx);
+    lv_obj_set_size(_tap_fx, kFxW, kFxH);
+    lv_obj_set_pos(_tap_fx, (320 - kFxW) / 2, 62);
+    lv_obj_set_style_transform_pivot_x(_tap_fx, kFxW / 2, LV_PART_MAIN);
+    lv_obj_set_style_transform_pivot_y(_tap_fx, kFxH / 2, LV_PART_MAIN);
+    lv_obj_remove_flag(_tap_fx, static_cast<lv_obj_flag_t>(LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE));
+
+    // Two squares, one turned 45 degrees, make an eight-point starburst.
+    constexpr int kBurst = 84;
+    for (size_t i = 0; i < _tap_burst.size(); ++i) {
+        lv_obj_t* burst = lv_obj_create(_tap_fx);
+        lv_obj_remove_style_all(burst);
+        lv_obj_set_size(burst, kBurst, kBurst);
+        lv_obj_set_pos(burst, (kFxW - kBurst) / 2, (kFxH - kBurst) / 2);
+        lv_obj_set_style_transform_pivot_x(burst, kBurst / 2, LV_PART_MAIN);
+        lv_obj_set_style_transform_pivot_y(burst, kBurst / 2, LV_PART_MAIN);
+        lv_obj_set_style_transform_rotation(burst, i == 0 ? 0 : 450, LV_PART_MAIN);
+        lv_obj_set_style_bg_color(burst, lv_color_hex(kPrimary), LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(burst, LV_OPA_COVER, LV_PART_MAIN);
+        lv_obj_set_style_border_color(burst, lv_color_hex(0x2B0A3D), LV_PART_MAIN);
+        lv_obj_set_style_border_width(burst, 4, LV_PART_MAIN);
+        lv_obj_remove_flag(burst, LV_OBJ_FLAG_CLICKABLE);
+        _tap_burst[i] = burst;
+    }
+
+    auto make_number = [this](int dx, int dy, uint32_t color) {
+        lv_obj_t* label = lv_label_create(_tap_fx);
+        lv_label_set_text(label, "1");
+        lv_obj_set_style_text_font(label, &lv_font_montserrat_24, LV_PART_MAIN);
+        lv_obj_set_style_text_color(label, lv_color_hex(color), LV_PART_MAIN);
+        lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+        lv_obj_set_size(label, 40, 30);
+        lv_obj_set_pos(label, 40 + dx, 35 + dy);
+        lv_obj_set_style_transform_pivot_x(label, 20, LV_PART_MAIN);
+        lv_obj_set_style_transform_pivot_y(label, 15, LV_PART_MAIN);
+        lv_obj_set_style_transform_scale(label, 512, LV_PART_MAIN);
+        lv_obj_remove_flag(label, LV_OBJ_FLAG_CLICKABLE);
+        return label;
+    };
+    _tap_shadow = make_number(3, 3, 0x2B0A3D);
+    _tap_number = make_number(0, 0, 0xFFFFFF);
+
+    set_visible(_tap_fx, false);
+}
+
+void FocusTimerView::update_tap_effect(const ViewState& state)
+{
+    const bool show = state.tap_count > 0 &&
+                      (state.cue_prompt == CuePrompt::Tap || state.cue_prompt == CuePrompt::Retry);
+    set_visible(_tap_fx, show);
+    if (!show) {
+        _last_tap_count = 0;
+        return;
+    }
+
+    if (_last_tap_count != state.tap_count || _last_fx_prompt != state.cue_prompt) {
+        char text[8];
+        std::snprintf(text, sizeof(text), "%u", state.tap_count);
+        lv_label_set_text(_tap_number, text);
+        lv_label_set_text(_tap_shadow, text);
+        const uint32_t color = state.cue_prompt == CuePrompt::Retry ? 0xFF4D4D : kPrimary;
+        for (auto* burst : _tap_burst) {
+            lv_obj_set_style_bg_color(burst, lv_color_hex(color), LV_PART_MAIN);
+        }
+        _last_tap_count = state.tap_count;
+        _last_fx_prompt = state.cue_prompt;
+    }
+
+    if (_last_tap_serial != state.tap_serial) {
+        _last_tap_serial = state.tap_serial;
+        // Tilt alternately so repeated taps visibly "hit" again.
+        lv_obj_set_style_transform_rotation(_tap_fx, state.tap_serial % 2 ? -80 : 80, LV_PART_MAIN);
+        lv_anim_delete(_tap_fx, nullptr);
+        lv_anim_t anim;
+        lv_anim_init(&anim);
+        lv_anim_set_var(&anim, _tap_fx);
+        lv_anim_set_exec_cb(&anim, [](void* object, int32_t value) {
+            lv_obj_set_style_transform_scale(static_cast<lv_obj_t*>(object), value, LV_PART_MAIN);
+        });
+        lv_anim_set_values(&anim, 560, 256);
+        lv_anim_set_duration(&anim, 260);
+        lv_anim_set_path_cb(&anim, lv_anim_path_overshoot);
+        lv_anim_start(&anim);
+    }
 }
 
 void FocusTimerView::show_closing()

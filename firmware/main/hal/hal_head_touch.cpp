@@ -6,11 +6,15 @@
 #include "hal.h"
 #include "drivers/Si12T/Si12T.h"
 #include "board/hal_bridge.h"
+#include "head_touch_guard.hpp"
 #include <mooncake_log.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
 static const std::string_view _tag = "HAL-HeadTouch";
+
+// Lower level = more sensitive. LEVEL_3 (the old value) missed light or dry-finger touches.
+constexpr si12t_sensitivity_level_t kTouchSensitivity = SI12T_SENSITIVITY_LEVEL_0;
 
 // 触摸状态
 enum class TouchState { IDLE, TOUCHED, SWIPING };
@@ -104,6 +108,11 @@ public:
         return gesture;
     }
 
+    bool active() const
+    {
+        return current_state != TouchState::IDLE;
+    }
+
     void set_config(const TouchConfig& cfg)
     {
         config = cfg;
@@ -124,6 +133,7 @@ static void _head_touch_update_task(void* param)
     TouchData data;
 
     GestureRecognizer recognizer;
+    head_touch::SaturationGuard guard;
     HeadPetGesture gesture;
 
     vTaskDelay(pdMS_TO_TICKS(200));
@@ -133,6 +143,24 @@ static void _head_touch_update_task(void* param)
         si12t_read_touch_result(si12t, &touch_result);
         si12t_parse_touch_result_to(touch_result, data.intensity);
         data.timestamp = xTaskGetTickCount();
+
+        const uint32_t now_ms = data.timestamp * portTICK_PERIOD_MS;
+
+        // All zones saturated for 10 s means the baseline drifted: recalibrate.
+        if (guard.should_recalibrate(data.intensity, now_ms)) {
+            mclog::tagWarn(_tag, "touch saturated, recalibrating");
+            si12t_setup(si12t, SI12T_TYPE_LOW, kTouchSensitivity);
+            if (recognizer.active()) {
+                GetHAL().onHeadPetGesture.emit(HeadPetGesture::Release);
+            }
+            recognizer = GestureRecognizer();
+            vTaskDelay(pdMS_TO_TICKS(50));
+            continue;  // never feed the stale saturated sample to the fresh recogniser
+        }
+        if (guard.suppressing(data.intensity)) {
+            vTaskDelay(pdMS_TO_TICKS(50));
+            continue;
+        }
 
         // Update and fire event
         gesture = recognizer.update(data);
@@ -156,7 +184,7 @@ void Hal::head_touch_init()
     };
     static si12t_handle_t si12t;
     si12t_init(&si12t_cfg, &si12t);
-    si12t_setup(si12t, SI12T_TYPE_LOW, SI12T_SENSITIVITY_LEVEL_3);
+    si12t_setup(si12t, SI12T_TYPE_LOW, kTouchSensitivity);
 
     // xTaskCreateWithCaps(_head_touch_update_task, "headtouch", 1024 * 6, si12t, 2, NULL, MALLOC_CAP_SPIRAM);
     xTaskCreatePinnedToCoreWithCaps(_head_touch_update_task, "headtouch", 1024 * 6, si12t, 2, NULL, 1,

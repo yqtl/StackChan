@@ -47,6 +47,9 @@ enum class Pose : uint8_t {
     WaveRight,
 };
 
+// Title hint while StackChan asks for the break rhythm.
+enum class CuePrompt : uint8_t { None, Watch, Tap, Retry };
+
 struct ViewState {
     State state = State::Ready;
     Phase phase = Phase::Focus;
@@ -57,6 +60,9 @@ struct ViewState {
     uint8_t focus_minutes = 25;
     uint8_t break_minutes = 5;
     bool sound_enabled = true;
+    CuePrompt cue_prompt = CuePrompt::None;
+    uint8_t tap_count = 0;
+    uint32_t tap_serial = 0;
 };
 
 class FocusTimerView {
@@ -117,12 +123,24 @@ private:
     bool _have_run_header = false;
     State _last_run_state = State::Ready;
     Phase _last_run_phase = Phase::Focus;
+    CuePrompt _last_cue_prompt = CuePrompt::None;
+
+    // Comic-style burst with the tap count, popped on every head tap.
+    lv_obj_t* _tap_fx = nullptr;
+    std::array<lv_obj_t*, 2> _tap_burst{};
+    lv_obj_t* _tap_shadow = nullptr;
+    lv_obj_t* _tap_number = nullptr;
+    uint32_t _last_tap_serial = 0;
+    uint8_t _last_tap_count = 0;
+    CuePrompt _last_fx_prompt = CuePrompt::None;
 
     std::unique_ptr<Button> make_button(const char* text, int x, int y, int width, int height,
                                         Action action, uint32_t color = 0x104F61);
     std::unique_ptr<Label> make_label(const char* text, int x, int y, int width, int height,
                                       const lv_font_t* font, uint32_t color, bool centered = true);
     void create_character();
+    void create_tap_effect();
+    void update_tap_effect(const ViewState& state);
     void set_pose(Pose pose);
     void submit(Action action);
     void set_ready_hidden(bool hidden);

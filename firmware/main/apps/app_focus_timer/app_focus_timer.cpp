@@ -8,9 +8,11 @@
 #include <apps/common/home_indicator/home_indicator.h>
 #include <apps/common/status_bar/status_bar.h>
 #include <esp_log.h>
+#include <esp_random.h>
 #include <esp_timer.h>
 #include <hal/hal.h>
 #include <settings.h>
+#include <stackchan/stackchan.h>
 
 #include <algorithm>
 #include <array>
@@ -102,6 +104,13 @@ void AppFocusTimer::onOpen()
     _completion_animation_start_us = 0;
     _last_animation_frame_us = 0;
     _current_pose = focus_timer::Pose::Idle;
+    _cue.cancel();
+    _seen_head_taps = _head_taps.load();
+    _head_touch_connection = GetHAL().onHeadPetGesture.connect([this](HeadPetGesture gesture) {
+        if (gesture == HeadPetGesture::Press) {
+            _head_taps.fetch_add(1);
+        }
+    });
 
     LvglLockGuard lock;
     _view = std::make_unique<focus_timer::FocusTimerView>(
@@ -159,6 +168,10 @@ void AppFocusTimer::onRunning()
             ESP_LOGW(TAG, "completion chime could not start; visual completion remains available");
             _audio_failure_logged = true;
         }
+        if (_timer.phase() == focus_timer::Phase::Focus) {
+            // Two or three nods, so the reply has to follow what StackChan did.
+            apply_cue(_cue.begin(static_cast<uint8_t>(2 + esp_random() % 2), now_us));
+        }
     }
 
     const focus_timer::Action action = _pending_action.exchange(focus_timer::Action::None);
@@ -166,9 +179,11 @@ void AppFocusTimer::onRunning()
         handle_action(action, now_us);
     }
 
+    update_break_cue(now_us);
     update_animation(now_us);
     {
         LvglLockGuard lock;
+        GetStackChan().update();
         if (_view) {
             _view->update(make_view_state(now_us));
         }
@@ -178,6 +193,11 @@ void AppFocusTimer::onRunning()
 
 void AppFocusTimer::onClose()
 {
+    stop_cue();
+    if (_head_touch_connection >= 0) {
+        GetHAL().onHeadPetGesture.disconnect(_head_touch_connection);
+        _head_touch_connection = -1;
+    }
     _timer.cancel();
     _home_closing = true;
     _chime.request_cancel();
@@ -301,6 +321,7 @@ void AppFocusTimer::handle_action(focus_timer::Action action, uint64_t now_us)
             }
             break;
         case Action::Extend:
+            stop_cue();
             if (_timer.extend(now_us)) {
                 _completion_animation_start_us = 0;
                 _last_animation_frame_us = 0;
@@ -310,6 +331,7 @@ void AppFocusTimer::handle_action(focus_timer::Action action, uint64_t now_us)
             }
             break;
         case Action::Finish:
+            stop_cue();
             _timer.cancel();
             _completion_animation_start_us = 0;
             _last_animation_frame_us = 0;
@@ -317,14 +339,8 @@ void AppFocusTimer::handle_action(focus_timer::Action action, uint64_t now_us)
             _chime.request_cancel();
             break;
         case Action::StartBreak:
-            if (_timer.state() == State::Completed && _timer.phase() == Phase::Focus) {
-                const uint8_t break_minutes = _preferences.preset == 0 ? 5 :
-                                              _preferences.preset == 1 ? 10 : _preferences.break_minutes;
-                _timer.start(Phase::Break, static_cast<uint32_t>(break_minutes) * 60U, now_us);
-                _completion_animation_start_us = 0;
-                _last_animation_frame_us = 0;
-                _chime.request_cancel();
-            }
+            stop_cue();
+            start_break(now_us);
             break;
         case Action::StartFocus:
             if (_timer.state() == State::Completed && _timer.phase() == Phase::Break) {
@@ -343,6 +359,7 @@ void AppFocusTimer::handle_action(focus_timer::Action action, uint64_t now_us)
 
 void AppFocusTimer::begin_home_close()
 {
+    stop_cue();
     _pending_action.store(focus_timer::Action::None);
     _timer.cancel();
     _home_closing = true;
@@ -356,6 +373,75 @@ void AppFocusTimer::begin_home_close()
             _view->show_closing();
         }
     }
+}
+
+void AppFocusTimer::start_break(uint64_t now_us)
+{
+    using focus_timer::Phase;
+    using focus_timer::State;
+
+    if (_timer.state() == State::Completed && _timer.phase() == Phase::Focus) {
+        const uint8_t break_minutes = _preferences.preset == 0 ? 5 :
+                                      _preferences.preset == 1 ? 10 : _preferences.break_minutes;
+        _timer.start(Phase::Break, static_cast<uint32_t>(break_minutes) * 60U, now_us);
+        _completion_animation_start_us = 0;
+        _last_animation_frame_us = 0;
+        _chime.request_cancel();
+    }
+}
+
+void AppFocusTimer::update_break_cue(uint64_t now_us)
+{
+    const uint32_t taps = _head_taps.load();
+    while (_seen_head_taps != taps) {
+        ++_seen_head_taps;
+        apply_cue(_cue.on_tap(now_us));
+    }
+    if (!_cue.active()) {
+        return;
+    }
+
+    bool motion_busy = false;
+    {
+        LvglLockGuard lock;
+        motion_busy = GetStackChan().motion().isMoving();
+    }
+    const focus_timer::CueCommand command = _cue.update(now_us, motion_busy);
+    apply_cue(command);
+    if (command.start_break) {
+        ESP_LOGI(TAG, "head taps matched %u nods, starting break", _cue.expected());
+        start_break(now_us);
+    }
+}
+
+void AppFocusTimer::apply_cue(const focus_timer::CueCommand& command)
+{
+    if (!command.move && !command.light) {
+        return;
+    }
+    LvglLockGuard lock;  // StackChan motion and lights update under the LVGL lock.
+    auto& stackchan = GetStackChan();
+    if (command.move) {
+        stackchan.motion().moveWithSpeed(command.yaw, command.pitch, command.speed);
+    }
+    if (command.light) {
+        stackchan.leftNeonLight().setColor(command.rgb);
+        stackchan.rightNeonLight().setColor(command.rgb);
+    }
+}
+
+void AppFocusTimer::stop_cue()
+{
+    if (!_cue.active()) {
+        return;
+    }
+    _cue.cancel();
+    focus_timer::CueCommand settle;
+    settle.move = true;
+    settle.speed = focus_timer::kCueHomeSpeed;
+    settle.light = true;
+    settle.rgb = focus_timer::kCueOffColor;
+    apply_cue(settle);
 }
 
 void AppFocusTimer::update_animation(uint64_t now_us)
@@ -423,5 +509,21 @@ focus_timer::ViewState AppFocusTimer::make_view_state(uint64_t now_us) const
     state.focus_minutes = _preferences.focus_minutes;
     state.break_minutes = _preferences.break_minutes;
     state.sound_enabled = _preferences.sound_enabled;
+    state.tap_count = _cue.taps();
+    state.tap_serial = _cue.tap_serial();
+    switch (_cue.stage()) {
+        case focus_timer::CueStage::Turning:
+        case focus_timer::CueStage::Nodding:
+            state.cue_prompt = focus_timer::CuePrompt::Watch;
+            break;
+        case focus_timer::CueStage::Listening:
+            state.cue_prompt = focus_timer::CuePrompt::Tap;
+            break;
+        case focus_timer::CueStage::Missed:
+            state.cue_prompt = focus_timer::CuePrompt::Retry;
+            break;
+        default:
+            break;
+    }
     return state;
 }

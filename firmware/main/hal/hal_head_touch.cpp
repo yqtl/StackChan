@@ -10,8 +10,11 @@
 #include <mooncake_log.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include <atomic>
 
 static const std::string_view _tag = "HAL-HeadTouch";
+
+static std::atomic<bool> s_recalibrate_requested{false};
 
 // Lower level = more sensitive. LEVEL_3 (the old value) missed light or dry-finger touches.
 constexpr si12t_sensitivity_level_t kTouchSensitivity = SI12T_SENSITIVITY_LEVEL_0;
@@ -147,8 +150,12 @@ static void _head_touch_update_task(void* param)
         const uint32_t now_ms = data.timestamp * portTICK_PERIOD_MS;
 
         // All zones saturated for 10 s means the baseline drifted: recalibrate.
-        if (guard.should_recalibrate(data.intensity, now_ms)) {
-            mclog::tagWarn(_tag, "touch saturated, recalibrating");
+        const bool drifted = guard.should_recalibrate(data.intensity, now_ms);
+        // A caller that expects taps now cannot wait that long.
+        const bool requested =
+            s_recalibrate_requested.exchange(false) && guard.should_recalibrate_now(data.intensity);
+        if (drifted || requested) {
+            mclog::tagWarn(_tag, "touch saturated{}, recalibrating", requested ? " while taps are expected" : "");
             si12t_setup(si12t, SI12T_TYPE_LOW, kTouchSensitivity);
             if (recognizer.active()) {
                 GetHAL().onHeadPetGesture.emit(HeadPetGesture::Release);
@@ -170,6 +177,11 @@ static void _head_touch_update_task(void* param)
 
         vTaskDelay(pdMS_TO_TICKS(50));
     }
+}
+
+void Hal::recalibrateHeadTouch()
+{
+    s_recalibrate_requested.store(true);
 }
 
 void Hal::head_touch_init()

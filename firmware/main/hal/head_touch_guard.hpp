@@ -38,6 +38,19 @@ public:
         return false;
     }
 
+    // Call for a sample when taps are expected now. Returns true when every zone already reads
+    // saturated, so the caller should recalibrate without waiting for the 10 s window. A finger
+    // on part of the head does not trigger it, as that would be absorbed into the baseline.
+    bool should_recalibrate_now(const uint8_t intensity[3])
+    {
+        if (!saturated(intensity)) {
+            return false;
+        }
+        tracking_ = false;
+        suppress_ = true;
+        return true;
+    }
+
     // True while samples must not reach the gesture recogniser: after a recalibration,
     // until one fully untouched sample (all zones 0) is seen. That sample is suppressed too.
     bool suppressing(const uint8_t intensity[3])

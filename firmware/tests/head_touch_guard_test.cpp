@@ -140,5 +140,41 @@ int main()
         assert(!guard.suppressing(kUntouched));
     }
 
+    {
+        // (h) A requested recalibration needs every zone saturated, and no waiting.
+        SaturationGuard guard;
+        for (const auto* sample : {kUntouched, kLight, kPartial}) {
+            assert(!guard.should_recalibrate_now(sample));
+            assert(!guard.suppressing(sample));
+        }
+        assert(guard.should_recalibrate_now(kAll3));
+        assert(guard.suppressing(kAll3));
+        assert(guard.suppressing(kLight));
+        assert(guard.suppressing(kUntouched));
+        assert(!guard.suppressing(kLight));
+        // Zones at the saturated level count too, not only at the maximum.
+        assert(guard.should_recalibrate_now(kFlicker));
+    }
+
+    {
+        // (i) A requested recalibration restarts the 10 s window.
+        SaturationGuard guard;
+        assert(!guard.should_recalibrate(kAll3, 5000));
+        assert(guard.should_recalibrate_now(kAll3));
+        assert(!guard.should_recalibrate(kAll3, 6000));
+        assert(!guard.should_recalibrate(kAll3, 6000 + kSaturatedRecalMs - 1));
+        assert(guard.should_recalibrate(kAll3, 6000 + kSaturatedRecalMs));
+    }
+
+    {
+        // (j) A sensor still saturated after recalibration can be requested again.
+        SaturationGuard guard;
+        assert(guard.should_recalibrate_now(kAll3));
+        assert(guard.suppressing(kAll3));
+        assert(guard.should_recalibrate_now(kAll3));
+        assert(guard.suppressing(kUntouched));
+        assert(!guard.suppressing(kLight));
+    }
+
     return 0;
 }

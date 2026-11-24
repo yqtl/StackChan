@@ -406,8 +406,14 @@ void AppFocusTimer::update_break_cue(uint64_t now_us)
         LvglLockGuard lock;
         motion_busy = GetStackChan().motion().isMoving();
     }
+    const focus_timer::CueStage stage_before = _cue.stage();
     const focus_timer::CueCommand command = _cue.update(now_us, motion_busy);
     apply_cue(command);
+    if (_cue.stage() == focus_timer::CueStage::Listening && stage_before != focus_timer::CueStage::Listening) {
+        // Around the start of a cue the sensor sometimes gets stuck reading every zone as touched,
+        // which hides the taps. Clear that now; the guard's 10 s would use up the reply window.
+        GetHAL().recalibrateHeadTouch();
+    }
     if (command.start_break) {
         ESP_LOGI(TAG, "head taps matched %u nods, starting break", _cue.expected());
         start_break(now_us);

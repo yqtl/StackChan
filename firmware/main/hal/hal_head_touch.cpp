@@ -16,8 +16,9 @@ static const std::string_view _tag = "HAL-HeadTouch";
 
 static std::atomic<bool> s_recalibrate_requested{false};
 
-// Lower level = more sensitive. LEVEL_3 (the old value) missed light or dry-finger touches.
-constexpr si12t_sensitivity_level_t kTouchSensitivity = SI12T_SENSITIVITY_LEVEL_0;
+// Lower level = more sensitive. LEVEL_3 is what M5Stack's firmware and BSP use; it can miss light
+// or dry-finger touches. At LEVEL_0 the LED fade and head turn often made every zone read as touched.
+constexpr si12t_sensitivity_level_t kTouchSensitivity = SI12T_SENSITIVITY_LEVEL_3;
 
 // 触摸状态
 enum class TouchState { IDLE, TOUCHED, SWIPING };

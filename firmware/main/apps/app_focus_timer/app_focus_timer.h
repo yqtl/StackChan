@@ -5,6 +5,7 @@
  */
 #pragma once
 
+#include "break_cue.hpp"
 #include "focus_chime.h"
 #include "focus_timer_model.hpp"
 #include "view/focus_timer_view.h"
@@ -38,6 +39,10 @@ private:
     void save_preferences_if_changed();
     void handle_action(focus_timer::Action action, uint64_t now_us);
     void begin_home_close();
+    void start_break(uint64_t now_us);
+    void update_break_cue(uint64_t now_us);
+    void apply_cue(const focus_timer::CueCommand& command);
+    void stop_cue();
     void update_animation(uint64_t now_us);
     focus_timer::ViewState make_view_state(uint64_t now_us) const;
 
@@ -48,6 +53,10 @@ private:
     FocusChime _chime;
     std::atomic<focus_timer::Action> _pending_action{focus_timer::Action::None};
     std::atomic<bool> _home_requested{false};
+    focus_timer::BreakCue _cue;
+    std::atomic<uint32_t> _head_taps{0};
+    uint32_t _seen_head_taps = 0;
+    int _head_touch_connection = -1;
     uint64_t _completion_animation_start_us = 0;
     uint64_t _last_animation_frame_us = 0;
     focus_timer::Pose _current_pose = focus_timer::Pose::Idle;

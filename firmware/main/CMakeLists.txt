@@ -20,6 +20,24 @@ set(STACK_CHAN_INCLUDE_DIRS
 )
 list(APPEND STACK_CHAN_SOURCES main.cpp)
 
+# Factory apps switched off in menuconfig ("StackChan factory apps") are left
+# out, together with the HAL service that only that app uses.
+if(NOT CONFIG_STACKCHAN_APP_AVATAR)
+    list(FILTER STACK_CHAN_SOURCES EXCLUDE REGEX "/apps/app_avatar/|/hal/hal_ws_avatar\\.cpp$|/hal/utils/jpeg_to_image/")
+endif()
+if(NOT CONFIG_STACKCHAN_APP_ESPNOW_REMOTE)
+    list(FILTER STACK_CHAN_SOURCES EXCLUDE REGEX "/apps/app_espnow_ctrl/|/hal/hal_espnow\\.cpp$")
+endif()
+if(NOT CONFIG_STACKCHAN_APP_APP_CENTER)
+    list(FILTER STACK_CHAN_SOURCES EXCLUDE REGEX "/apps/app_app_center/|/hal/hal_app_center\\.cpp$|/hal/utils/ota/")
+endif()
+if(NOT CONFIG_STACKCHAN_APP_EZDATA)
+    list(FILTER STACK_CHAN_SOURCES EXCLUDE REGEX "/apps/app_ezdata/|/hal/hal_ezdata\\.cpp$")
+endif()
+if(NOT CONFIG_STACKCHAN_APP_DANCE)
+    list(FILTER STACK_CHAN_SOURCES EXCLUDE REGEX "/apps/app_dance/")
+endif()
+
 # Define source files
 set(SOURCES "audio/audio_codec.cc"
             "audio/audio_service.cc"

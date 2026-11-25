@@ -43,6 +43,22 @@ target_include_directories(deferred_app_launch_test PRIVATE
 target_compile_features(deferred_app_launch_test PRIVATE cxx_std_17)
 add_test(NAME deferred_app_launch_test COMMAND $<TARGET_FILE:deferred_app_launch_test>)
 
+add_executable(launcher_position_test
+    launcher_position_test.cpp
+    ../components/mooncake/src/mooncake.cpp
+    ../components/mooncake/src/ability/app_ability.cpp
+    ../components/mooncake/src/ability/ui_ability.cpp
+    ../components/mooncake/src/ability/worker_ability.cpp
+    ../components/mooncake/src/ability_manager/ability_manager.cpp
+    ../components/mooncake/src/ability_manager/ability_api_wrapping.cpp
+)
+target_include_directories(launcher_position_test PRIVATE
+    ../main/apps/common
+    ../components/mooncake/src
+)
+target_compile_features(launcher_position_test PRIVATE cxx_std_17)
+add_test(NAME launcher_position_test COMMAND $<TARGET_FILE:launcher_position_test>)
+
 add_executable(sl_bus_parser_test
     sl_bus_parser_test.cpp
     ../main/apps/app_sl_bus/sl_bus_departures.cpp

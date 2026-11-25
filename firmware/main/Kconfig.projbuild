@@ -1011,3 +1011,43 @@ config STACKCHAN_CUSTOM_FIRMWARE
     help
         Continue activation and connection setup, but do not automatically
         replace this custom build with a server-provided stock image.
+
+menu "StackChan factory apps"
+
+config STACKCHAN_APP_AVATAR
+    bool "AVATAR: remote avatar and video calls from the phone app"
+    default y
+    help
+        Avatar, motion and video-call control from the StackChan World app.
+        Turning it off also leaves out its WebSocket avatar service.
+
+config STACKCHAN_APP_ESPNOW_REMOTE
+    bool "ESPNOW.REMOTE: ESP-NOW remote control"
+    default y
+    help
+        Head and laser control from the StackChan remote over ESP-NOW.
+        Turning it off also leaves out the ESP-NOW service.
+
+config STACKCHAN_APP_APP_CENTER
+    bool "APP.CENTER: install firmware apps from the StackChan server"
+    default y
+    help
+        Lists apps on the StackChan server and installs one by writing it to
+        the other OTA slot, where a custom build usually keeps the factory
+        image. Turning it off also leaves out its downloader.
+
+config STACKCHAN_APP_EZDATA
+    bool "EZDATA: M5Stack EzData cloud demo"
+    default y
+    help
+        Pairs with M5Stack EzData over MQTT. Turning it off also leaves out
+        the EzData service.
+
+config STACKCHAN_APP_DANCE
+    bool "DANCE: dances sent from the phone app"
+    default y
+    help
+        Plays motion and RGB sequences sent over BLE. BLE stays in the build
+        because SETUP uses it for Wi-Fi configuration.
+
+endmenu
